@@ -28,6 +28,7 @@ class Step1Request extends FormRequest
             'state_of_posting' => 'required|string',
             'lga'              => 'required|string',
             'office_address'   => 'required|string',
+            'verification_channel' => 'required|in:phone,web,both',
         ];
     }
 }

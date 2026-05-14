@@ -35,11 +35,13 @@ class Verification extends Model
         'challenge_response_score', 'speaker_biometric_score', 'anti_spoof_score',
         'replay_detection_score', 'face_liveness_score', 'latency_ms', 'language',
         'salary_released', 'squad_reference', 'verified_at',
+        'recording_url', 'vapi_call_id', 'call_cost', 'transcript',
     ];
 
     protected $casts = [
-        'verified_at' => 'datetime',
+        'verified_at'     => 'datetime',
         'salary_released' => 'boolean',
+        'call_cost'       => 'decimal:4',
     ];
 
     public function worker()

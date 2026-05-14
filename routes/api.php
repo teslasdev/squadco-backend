@@ -9,6 +9,10 @@ use App\Http\Controllers\Api\V1\{
     DepartmentController,
     VerificationCycleController,
     VerificationController,
+    VoiceEnrolmentController,
+    FaceVerificationController,
+    SelfEnrolController,
+    WorkerActivationController,
     GhostAlertController,
     FieldAgentController,
     DispatchController,
@@ -22,6 +26,7 @@ use App\Http\Controllers\Api\V1\{
     OnboardingController,
 };
 use App\Http\Controllers\Api\V1\Webhooks\SquadWebhookController;
+use App\Http\Controllers\Api\V1\Webhooks\VapiWebhookController;
 use App\Http\Controllers\AuthController;
 
 /*
@@ -35,9 +40,21 @@ Route::prefix('v1')->group(function () {
     // ─── Public: Squad Webhook (HMAC validated inside controller) ────────────
     Route::post('/webhooks/squad', [SquadWebhookController::class, 'handle']);
 
+    // ─── Public: Vapi Webhook (X-Vapi-Secret validated inside controller) ────
+    Route::post('/webhooks/vapi', [VapiWebhookController::class, 'handle']);
+
     // ─── Public: Onboarding resume by token (no auth) ─────────────────────────
     Route::prefix('onboarding')->group(function () {
         Route::get('/resume/{token}', [OnboardingController::class, 'resume']);
+    });
+
+    // ─── Public: Worker self-enrol via QR token (no auth, rate-limited) ──────
+    Route::prefix('self-enrol')->middleware('throttle:30,1')->group(function () {
+        Route::get('/{token}',         [SelfEnrolController::class, 'show']);
+        Route::put('/{token}/step2',   [SelfEnrolController::class, 'step2']);
+        Route::post('/{token}/step4',  [SelfEnrolController::class, 'step4']);
+        Route::post('/{token}/step5',  [SelfEnrolController::class, 'step5']);
+        Route::post('/{token}/submit', [SelfEnrolController::class, 'submit']);
     });
 
     // ─── Auth ─────────────────────────────────────────────────────────────────
@@ -70,11 +87,30 @@ Route::prefix('v1')->group(function () {
 
         // Workers
         Route::post('/workers/import', [WorkerController::class, 'import']);
+
+        // Worker activation (admin review queue) — MUST come before apiResource so
+        // /workers/pending-activation doesn't get caught by /workers/{worker}
+        Route::get('/workers/pending-activation', [WorkerActivationController::class, 'listPending']);
+        Route::post('/workers/{id}/activate',     [WorkerActivationController::class, 'activate']);
+        Route::post('/workers/{id}/reject',       [WorkerActivationController::class, 'reject']);
+        Route::post('/workers/{id}/issue-qr',     [WorkerActivationController::class, 'issueQr']);
+
         Route::apiResource('/workers', WorkerController::class);
         Route::get('/workers/{id}/verifications', [WorkerController::class, 'verifications']);
         Route::get('/workers/{id}/alerts',        [WorkerController::class, 'alerts']);
         Route::post('/workers/{id}/block',        [WorkerController::class, 'block']);
         Route::post('/workers/{id}/unblock',      [WorkerController::class, 'unblock']);
+
+        // Voice enrolment + verification (admin-triggered Vapi outbound calls)
+        Route::post('/workers/{id}/enrol-voice',  [VoiceEnrolmentController::class, 'enrol']);
+        Route::post('/workers/{id}/verify-voice', [VoiceEnrolmentController::class, 'verify']);
+
+        // Face verification (Persona-style kiosk: identity + turn right + turn left)
+        Route::post('/face-verification/start',                  [FaceVerificationController::class, 'start']);
+        Route::post('/face-verification/{session_id}/frame1',    [FaceVerificationController::class, 'frame1']);
+        Route::post('/face-verification/{session_id}/frame2',    [FaceVerificationController::class, 'frame2']);
+        Route::post('/face-verification/{session_id}/frame3',    [FaceVerificationController::class, 'frame3']);
+        Route::get('/face-verification/{session_id}',            [FaceVerificationController::class, 'show']);
 
         // MDAs
         Route::apiResource('/mdas', MdaController::class);

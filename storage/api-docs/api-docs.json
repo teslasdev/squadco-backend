@@ -430,6 +430,194 @@
                 ]
             }
         },
+        "/face-verification/start": {
+            "post": {
+                "tags": [
+                    "Face Verification"
+                ],
+                "summary": "Begin a face verification session for a worker",
+                "operationId": "faceVerificationStart",
+                "requestBody": {
+                    "required": true,
+                    "content": {
+                        "application/json": {
+                            "schema": {
+                                "required": [
+                                    "worker_id"
+                                ],
+                                "properties": {
+                                    "worker_id": {
+                                        "type": "integer",
+                                        "example": 1
+                                    }
+                                },
+                                "type": "object"
+                            }
+                        }
+                    }
+                },
+                "responses": {
+                    "201": {
+                        "description": "Session created — proceed to frame1"
+                    },
+                    "422": {
+                        "description": "Worker not eligible for face verification"
+                    }
+                },
+                "security": [
+                    {
+                        "bearerAuth": []
+                    }
+                ]
+            }
+        },
+        "/face-verification/{session_id}/frame1": {
+            "post": {
+                "tags": [
+                    "Face Verification"
+                ],
+                "summary": "Submit frame 1 (look straight) — runs identity check",
+                "operationId": "faceVerificationFrame1",
+                "parameters": [
+                    {
+                        "name": "session_id",
+                        "in": "path",
+                        "required": true,
+                        "schema": {
+                            "type": "integer"
+                        }
+                    }
+                ],
+                "requestBody": {
+                    "required": true,
+                    "content": {
+                        "multipart/form-data": {
+                            "schema": {
+                                "required": [
+                                    "image"
+                                ],
+                                "properties": {
+                                    "image": {
+                                        "type": "string",
+                                        "format": "binary"
+                                    }
+                                },
+                                "type": "object"
+                            }
+                        }
+                    }
+                },
+                "responses": {
+                    "200": {
+                        "description": "Identity check passed — proceed to frame2 (turn right)"
+                    },
+                    "422": {
+                        "description": "Identity FAIL or bad image — session ended"
+                    },
+                    "503": {
+                        "description": "AI service unreachable"
+                    }
+                },
+                "security": [
+                    {
+                        "bearerAuth": []
+                    }
+                ]
+            }
+        },
+        "/face-verification/{session_id}/frame2": {
+            "post": {
+                "tags": [
+                    "Face Verification"
+                ],
+                "summary": "Submit frame 2 (turn right) — runs head-turn liveness check",
+                "operationId": "faceVerificationFrame2",
+                "parameters": [
+                    {
+                        "name": "session_id",
+                        "in": "path",
+                        "required": true,
+                        "schema": {
+                            "type": "integer"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Right turn passed — proceed to frame3 (turn left)"
+                    },
+                    "422": {
+                        "description": "Right turn failed or bad image — session ended"
+                    }
+                },
+                "security": [
+                    {
+                        "bearerAuth": []
+                    }
+                ]
+            }
+        },
+        "/face-verification/{session_id}/frame3": {
+            "post": {
+                "tags": [
+                    "Face Verification"
+                ],
+                "summary": "Submit frame 3 (turn left) — final liveness check; produces verdict",
+                "operationId": "faceVerificationFrame3",
+                "parameters": [
+                    {
+                        "name": "session_id",
+                        "in": "path",
+                        "required": true,
+                        "schema": {
+                            "type": "integer"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Session complete — verdict in response"
+                    },
+                    "422": {
+                        "description": "Left turn failed or bad image — session ended"
+                    }
+                },
+                "security": [
+                    {
+                        "bearerAuth": []
+                    }
+                ]
+            }
+        },
+        "/face-verification/{session_id}": {
+            "get": {
+                "tags": [
+                    "Face Verification"
+                ],
+                "summary": "Inspect the state of a face verification session (for polling/debug)",
+                "operationId": "faceVerificationShow",
+                "parameters": [
+                    {
+                        "name": "session_id",
+                        "in": "path",
+                        "required": true,
+                        "schema": {
+                            "type": "integer"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Session detail"
+                    }
+                },
+                "security": [
+                    {
+                        "bearerAuth": []
+                    }
+                ]
+            }
+        },
         "/agents": {
             "get": {
                 "tags": [
@@ -1488,7 +1676,8 @@
                 "tags": [
                     "Worker Onboarding"
                 ],
-                "summary": "Step 4 — Upload face biometric image",
+                "summary": "Step 4 — Enrol face: live 3-frame capture (look straight, turn right, turn left)",
+                "description": "For workers with verification_channel of \"web\" or \"both\" the admin captures three live frames at a kiosk. The straight frame produces the enrolment embedding; the right/left frames pass head-turn liveness checks so a printed photo cannot be enrolled. For \"phone\"-only workers this step is auto-skipped (no body required).",
                 "operationId": "onboardingStep4",
                 "parameters": [
                     {
@@ -1505,12 +1694,19 @@
                     "content": {
                         "multipart/form-data": {
                             "schema": {
-                                "required": [
-                                    "face_image"
-                                ],
                                 "properties": {
-                                    "face_image": {
-                                        "description": "Face photo — jpg/jpeg/png, max 5 MB",
+                                    "frame_straight": {
+                                        "description": "Worker looking directly at camera (required for web/both)",
+                                        "type": "string",
+                                        "format": "binary"
+                                    },
+                                    "frame_right": {
+                                        "description": "Worker turning head to their right",
+                                        "type": "string",
+                                        "format": "binary"
+                                    },
+                                    "frame_left": {
+                                        "description": "Worker turning head to their left",
                                         "type": "string",
                                         "format": "binary"
                                     }
@@ -1522,13 +1718,16 @@
                 },
                 "responses": {
                     "200": {
-                        "description": "Face image stored, face_enrolled set to true"
+                        "description": "Face enrolment completed (or skipped for phone-only workers)"
                     },
                     "404": {
                         "description": "Worker not found"
                     },
                     "422": {
-                        "description": "Validation error"
+                        "description": "Identity FAIL, liveness FAIL, or bad image"
+                    },
+                    "503": {
+                        "description": "AI service unreachable"
                     }
                 },
                 "security": [
@@ -1982,6 +2181,196 @@
                         "bearerAuth": []
                     }
                 ]
+            }
+        },
+        "/self-enrol/{token}": {
+            "get": {
+                "tags": [
+                    "Self Enrolment"
+                ],
+                "summary": "Worker view — what info to confirm, which biometric captures are pending",
+                "operationId": "selfEnrolShow",
+                "parameters": [
+                    {
+                        "name": "token",
+                        "in": "path",
+                        "required": true,
+                        "schema": {
+                            "type": "string"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Worker context for the self-enrol UI"
+                    },
+                    "404": {
+                        "description": "Invalid token"
+                    },
+                    "410": {
+                        "description": "Token already used"
+                    }
+                }
+            }
+        },
+        "/self-enrol/{token}/step2": {
+            "put": {
+                "tags": [
+                    "Self Enrolment"
+                ],
+                "summary": "Worker submits personal/identity details",
+                "operationId": "selfEnrolStep2",
+                "parameters": [
+                    {
+                        "name": "token",
+                        "in": "path",
+                        "required": true,
+                        "schema": {
+                            "type": "string"
+                        }
+                    }
+                ],
+                "requestBody": {
+                    "required": true,
+                    "content": {
+                        "application/json": {
+                            "schema": {
+                                "required": [
+                                    "nin",
+                                    "bvn",
+                                    "phone",
+                                    "email",
+                                    "home_address",
+                                    "next_of_kin_name",
+                                    "next_of_kin_phone",
+                                    "next_of_kin_relationship"
+                                ],
+                                "properties": {
+                                    "nin": {
+                                        "type": "string"
+                                    },
+                                    "bvn": {
+                                        "type": "string"
+                                    },
+                                    "phone": {
+                                        "type": "string"
+                                    },
+                                    "email": {
+                                        "type": "string"
+                                    },
+                                    "home_address": {
+                                        "type": "string"
+                                    },
+                                    "next_of_kin_name": {
+                                        "type": "string"
+                                    },
+                                    "next_of_kin_phone": {
+                                        "type": "string"
+                                    },
+                                    "next_of_kin_relationship": {
+                                        "type": "string"
+                                    }
+                                },
+                                "type": "object"
+                            }
+                        }
+                    }
+                },
+                "responses": {
+                    "200": {
+                        "description": "Personal info saved"
+                    },
+                    "422": {
+                        "description": "Validation error"
+                    }
+                }
+            }
+        },
+        "/self-enrol/{token}/step4": {
+            "post": {
+                "tags": [
+                    "Self Enrolment"
+                ],
+                "summary": "Worker captures 3 face frames from their phone (or skipped for phone-only)",
+                "operationId": "selfEnrolStep4",
+                "parameters": [
+                    {
+                        "name": "token",
+                        "in": "path",
+                        "required": true,
+                        "schema": {
+                            "type": "string"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Face enrolment completed or skipped"
+                    },
+                    "422": {
+                        "description": "Identity or liveness FAIL"
+                    },
+                    "503": {
+                        "description": "AI service unreachable"
+                    }
+                }
+            }
+        },
+        "/self-enrol/{token}/step5": {
+            "post": {
+                "tags": [
+                    "Self Enrolment"
+                ],
+                "summary": "Worker uploads a voice sample (or skipped for web-only)",
+                "operationId": "selfEnrolStep5",
+                "parameters": [
+                    {
+                        "name": "token",
+                        "in": "path",
+                        "required": true,
+                        "schema": {
+                            "type": "string"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Voice enrolment completed or skipped"
+                    },
+                    "422": {
+                        "description": "Audio rejected"
+                    },
+                    "503": {
+                        "description": "AI service unreachable"
+                    }
+                }
+            }
+        },
+        "/self-enrol/{token}/submit": {
+            "post": {
+                "tags": [
+                    "Self Enrolment"
+                ],
+                "summary": "Worker finalises submission — moves status to pending_review",
+                "operationId": "selfEnrolSubmit",
+                "parameters": [
+                    {
+                        "name": "token",
+                        "in": "path",
+                        "required": true,
+                        "schema": {
+                            "type": "string"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Submitted for admin review"
+                    },
+                    "422": {
+                        "description": "Some required steps still pending"
+                    }
+                }
             }
         },
         "/settings": {
@@ -2905,6 +3294,96 @@
                 ]
             }
         },
+        "/workers/{id}/enrol-voice": {
+            "post": {
+                "tags": [
+                    "Voice Enrolment"
+                ],
+                "summary": "Upload a voice sample to enrol the worker (web upload, no phone call)",
+                "operationId": "workerEnrolVoice",
+                "parameters": [
+                    {
+                        "name": "id",
+                        "in": "path",
+                        "required": true,
+                        "schema": {
+                            "type": "integer"
+                        }
+                    }
+                ],
+                "requestBody": {
+                    "required": true,
+                    "content": {
+                        "multipart/form-data": {
+                            "schema": {
+                                "required": [
+                                    "voice_sample"
+                                ],
+                                "properties": {
+                                    "voice_sample": {
+                                        "description": "WAV / MP3 / OGG / WebM audio, at least 1.5s of speech",
+                                        "type": "string",
+                                        "format": "binary"
+                                    }
+                                },
+                                "type": "object"
+                            }
+                        }
+                    }
+                },
+                "responses": {
+                    "200": {
+                        "description": "Enrolment completed, embeddings stored"
+                    },
+                    "422": {
+                        "description": "Validation error or audio rejected by AI"
+                    },
+                    "503": {
+                        "description": "AI service unreachable"
+                    }
+                },
+                "security": [
+                    {
+                        "bearerAuth": []
+                    }
+                ]
+            }
+        },
+        "/workers/{id}/verify-voice": {
+            "post": {
+                "tags": [
+                    "Voice Enrolment"
+                ],
+                "summary": "Trigger a Vapi outbound call to verify the worker's voice",
+                "operationId": "workerVerifyVoice",
+                "parameters": [
+                    {
+                        "name": "id",
+                        "in": "path",
+                        "required": true,
+                        "schema": {
+                            "type": "integer"
+                        }
+                    }
+                ],
+                "responses": {
+                    "202": {
+                        "description": "Call dispatched"
+                    },
+                    "422": {
+                        "description": "Worker not enrolled or has no phone"
+                    },
+                    "503": {
+                        "description": "Vapi unreachable"
+                    }
+                },
+                "security": [
+                    {
+                        "bearerAuth": []
+                    }
+                ]
+            }
+        },
         "/webhooks/squad": {
             "post": {
                 "tags": [
@@ -2957,6 +3436,199 @@
                         "description": "Invalid signature"
                     }
                 }
+            }
+        },
+        "/webhooks/vapi": {
+            "post": {
+                "tags": [
+                    "Webhooks"
+                ],
+                "summary": "Receive Vapi end-of-call recordings",
+                "description": "Public endpoint authenticated by X-Vapi-Secret header. Routes to enrol or verify based on metadata.intent.",
+                "operationId": "vapiWebhook",
+                "parameters": [
+                    {
+                        "name": "X-Vapi-Secret",
+                        "in": "header",
+                        "required": true,
+                        "schema": {
+                            "type": "string"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Event processed (success or absorbed failure)"
+                    },
+                    "401": {
+                        "description": "Invalid secret"
+                    }
+                }
+            }
+        },
+        "/workers/pending-activation": {
+            "get": {
+                "tags": [
+                    "Worker Activation"
+                ],
+                "summary": "List workers awaiting admin review (status=pending_review)",
+                "operationId": "workersPendingActivation",
+                "parameters": [
+                    {
+                        "name": "mda_id",
+                        "in": "query",
+                        "required": false,
+                        "schema": {
+                            "type": "integer"
+                        }
+                    },
+                    {
+                        "name": "channel",
+                        "in": "query",
+                        "required": false,
+                        "schema": {
+                            "type": "string",
+                            "enum": [
+                                "phone",
+                                "web",
+                                "both"
+                            ]
+                        }
+                    },
+                    {
+                        "name": "search",
+                        "in": "query",
+                        "required": false,
+                        "schema": {
+                            "type": "string"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Paginated pending workers"
+                    }
+                },
+                "security": [
+                    {
+                        "bearerAuth": []
+                    }
+                ]
+            }
+        },
+        "/workers/{id}/activate": {
+            "post": {
+                "tags": [
+                    "Worker Activation"
+                ],
+                "summary": "Approve a pending worker — flips status to active, eligible for automated verification",
+                "operationId": "workerActivate",
+                "parameters": [
+                    {
+                        "name": "id",
+                        "in": "path",
+                        "required": true,
+                        "schema": {
+                            "type": "integer"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Worker activated"
+                    },
+                    "422": {
+                        "description": "Worker is not in pending_review state"
+                    }
+                },
+                "security": [
+                    {
+                        "bearerAuth": []
+                    }
+                ]
+            }
+        },
+        "/workers/{id}/reject": {
+            "post": {
+                "tags": [
+                    "Worker Activation"
+                ],
+                "summary": "Reject a pending worker — flips status to rejected with admin reason",
+                "operationId": "workerReject",
+                "parameters": [
+                    {
+                        "name": "id",
+                        "in": "path",
+                        "required": true,
+                        "schema": {
+                            "type": "integer"
+                        }
+                    }
+                ],
+                "requestBody": {
+                    "required": true,
+                    "content": {
+                        "application/json": {
+                            "schema": {
+                                "required": [
+                                    "reason"
+                                ],
+                                "properties": {
+                                    "reason": {
+                                        "type": "string",
+                                        "example": "Face photo does not match employment record"
+                                    }
+                                },
+                                "type": "object"
+                            }
+                        }
+                    }
+                },
+                "responses": {
+                    "200": {
+                        "description": "Worker rejected"
+                    },
+                    "422": {
+                        "description": "Worker is not in pending_review state"
+                    }
+                },
+                "security": [
+                    {
+                        "bearerAuth": []
+                    }
+                ]
+            }
+        },
+        "/workers/{id}/issue-qr": {
+            "post": {
+                "tags": [
+                    "Worker Activation"
+                ],
+                "summary": "Issue (or reissue) a self-enrol token for a worker — returns the URL to encode in a QR code",
+                "operationId": "workerIssueQr",
+                "parameters": [
+                    {
+                        "name": "id",
+                        "in": "path",
+                        "required": true,
+                        "schema": {
+                            "type": "integer"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Fresh self-enrol URL"
+                    },
+                    "422": {
+                        "description": "Worker is already active or blocked"
+                    }
+                },
+                "security": [
+                    {
+                        "bearerAuth": []
+                    }
+                ]
             }
         },
         "/workers": {
@@ -3522,6 +4194,10 @@
             "description": "Field agent dispatch management"
         },
         {
+            "name": "Face Verification",
+            "description": "Persona-style 3-frame face verification (identity + 2 head-turn liveness checks)"
+        },
+        {
             "name": "Field Agents",
             "description": "Physical verification field agents"
         },
@@ -3544,6 +4220,10 @@
         {
             "name": "Reports",
             "description": "Analytics and reporting endpoints"
+        },
+        {
+            "name": "Self Enrolment",
+            "description": "Worker-driven onboarding via QR-code token (no auth)"
         },
         {
             "name": "Settings",
@@ -3570,8 +4250,16 @@
             "description": "Squad virtual accounts for workers"
         },
         {
+            "name": "Voice Enrolment",
+            "description": "Voice enrolment (web upload) + verification (Vapi outbound call)"
+        },
+        {
             "name": "Webhooks",
             "description": "Inbound webhook endpoints"
+        },
+        {
+            "name": "Worker Activation",
+            "description": "Admin review + activation of pending workers"
         },
         {
             "name": "Workers",

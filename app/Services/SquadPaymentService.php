@@ -12,8 +12,8 @@ class SquadPaymentService
 
     public function __construct()
     {
-        $this->baseUrl = config('services.squad.base_url', 'https://api-d.squadco.com');
-        $this->apiKey  = config('services.squad.api_key', '');
+        $this->baseUrl = (string) (config('services.squad.base_url') ?? 'https://api-d.squadco.com');
+        $this->apiKey  = (string) (config('services.squad.api_key') ?? '');
     }
 
     /**

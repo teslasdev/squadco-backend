@@ -11,10 +11,12 @@ use App\Http\Requests\Api\V1\Onboarding\Step4Request;
 use App\Http\Requests\Api\V1\Onboarding\Step5Request;
 use App\Models\VirtualAccount;
 use App\Models\Worker;
+use App\Services\AiVerificationService;
 use App\Services\AuditService;
 use App\Services\SquadPaymentService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Str;
 use OpenApi\Attributes as OA;
 
@@ -23,7 +25,8 @@ class OnboardingController extends Controller
 {
     public function __construct(
         private SquadPaymentService $squad,
-        private AuditService $audit
+        private AuditService $audit,
+        private AiVerificationService $ai
     ) {}
 
     // ─── Step 1: Employment details ───────────────────────────────────────────
@@ -66,7 +69,10 @@ class OnboardingController extends Controller
     public function step1(Step1Request $request): JsonResponse
     {
         $data = $request->validated();
-        $data['status']            = 'draft';
+        // Workers start in pending_self_enrol — admin has filled employment data,
+        // but worker still needs to confirm personal info + capture biometrics
+        // (either at a kiosk via the admin, or via the self-enrol QR link).
+        $data['status']            = 'pending_self_enrol';
         $data['onboarding_status'] = 'step1';
         $data['onboarding_token']  = (string) Str::uuid();
 
@@ -78,6 +84,7 @@ class OnboardingController extends Controller
             'worker_id'         => $worker->id,
             'onboarding_token'  => $worker->onboarding_token,
             'onboarding_status' => $worker->onboarding_status,
+            'status'            => $worker->status,
         ], 'Step 1 completed.', 201);
     }
 
@@ -175,13 +182,14 @@ class OnboardingController extends Controller
         ], 'Step 3 completed.');
     }
 
-    // ─── Step 4: Face biometric ───────────────────────────────────────────────
+    // ─── Step 4: Face biometric (live 3-frame Persona-style capture) ─────────
 
     #[OA\Post(
         path: '/onboarding/{worker_id}/step4',
         operationId: 'onboardingStep4',
         tags: ['Worker Onboarding'],
-        summary: 'Step 4 — Upload face biometric image',
+        summary: 'Step 4 — Enrol face: live 3-frame capture (look straight, turn right, turn left)',
+        description: 'For workers with verification_channel of "web" or "both" the admin captures three live frames at a kiosk. The straight frame produces the enrolment embedding; the right/left frames pass head-turn liveness checks so a printed photo cannot be enrolled. For "phone"-only workers this step is auto-skipped (no body required).',
         security: [['bearerAuth' => []]],
         parameters: [new OA\Parameter(name: 'worker_id', in: 'path', required: true, schema: new OA\Schema(type: 'integer'))],
         requestBody: new OA\RequestBody(
@@ -189,45 +197,150 @@ class OnboardingController extends Controller
             content: new OA\MediaType(
                 mediaType: 'multipart/form-data',
                 schema: new OA\Schema(
-                    required: ['face_image'],
                     properties: [
-                        new OA\Property(
-                            property: 'face_image',
-                            type: 'string',
-                            format: 'binary',
-                            description: 'Face photo — jpg/jpeg/png, max 5 MB'
-                        ),
+                        new OA\Property(property: 'frame_straight', type: 'string', format: 'binary', description: 'Worker looking directly at camera (required for web/both)'),
+                        new OA\Property(property: 'frame_right',    type: 'string', format: 'binary', description: 'Worker turning head to their right'),
+                        new OA\Property(property: 'frame_left',     type: 'string', format: 'binary', description: 'Worker turning head to their left'),
                     ]
                 )
             )
         ),
         responses: [
-            new OA\Response(response: 200, description: 'Face image stored, face_enrolled set to true'),
+            new OA\Response(response: 200, description: 'Face enrolment completed (or skipped for phone-only workers)'),
             new OA\Response(response: 404, description: 'Worker not found'),
-            new OA\Response(response: 422, description: 'Validation error'),
+            new OA\Response(response: 422, description: 'Identity FAIL, liveness FAIL, or bad image'),
+            new OA\Response(response: 503, description: 'AI service unreachable'),
         ]
     )]
-    public function step4(Step4Request $request, int $worker_id): JsonResponse
+    public function step4(Request $request, int $worker_id): JsonResponse
     {
-        $worker    = Worker::findOrFail($worker_id);
-        $timestamp = now()->format('YmdHis');
-        $filename  = "{$worker_id}_{$timestamp}.jpg";
-        $path      = $request->file('face_image')->storeAs('biometrics/faces', $filename, 'public');
-        $url       = \Illuminate\Support\Facades\Storage::url($path);
+        $worker = Worker::findOrFail($worker_id);
 
+        // Phone-only workers don't enrol a face. Mark step done and move on.
+        if ($worker->verification_channel === 'phone') {
+            $worker->update(['onboarding_status' => 'step4']);
+            $this->audit->log('onboarding_step4_skipped', 'Worker', $worker_id, [], [
+                'reason' => 'verification_channel=phone',
+            ], $request);
+            return $this->successResponse([
+                'face_enrolled'     => false,
+                'skipped'           => true,
+                'reason'            => 'Worker channel is phone-only; face enrolment not required.',
+                'onboarding_status' => $worker->onboarding_status,
+            ], 'Step 4 skipped (phone-only worker).');
+        }
+
+        // Web / both: require the 3-frame live capture.
+        $request->validate([
+            'frame_straight' => 'required|file|mimes:jpg,jpeg,png,webp|max:5120',
+            'frame_right'    => 'required|file|mimes:jpg,jpeg,png,webp|max:5120',
+            'frame_left'     => 'required|file|mimes:jpg,jpeg,png,webp|max:5120',
+        ]);
+
+        $timestamp = now()->format('YmdHis');
+        $straightPath = $request->file('frame_straight')->storeAs("biometrics/faces/{$worker_id}", "{$timestamp}_straight.jpg", 'public');
+        $rightPath    = $request->file('frame_right')->storeAs("biometrics/faces/{$worker_id}", "{$timestamp}_right.jpg", 'public');
+        $leftPath     = $request->file('frame_left')->storeAs("biometrics/faces/{$worker_id}", "{$timestamp}_left.jpg", 'public');
+
+        $straightAbs = Storage::disk('public')->path($straightPath);
+        $rightAbs    = Storage::disk('public')->path($rightPath);
+        $leftAbs     = Storage::disk('public')->path($leftPath);
+
+        $cleanup = function () use ($straightPath, $rightPath, $leftPath) {
+            Storage::disk('public')->delete([$straightPath, $rightPath, $leftPath]);
+        };
+
+        // 1. Identity / embedding from the straight frame
+        $embedResult = $this->ai->embedFace($straightAbs);
+        if (!$embedResult['success']) {
+            $cleanup();
+            $this->audit->log('onboarding_step4_embed_failed', 'Worker', $worker_id, [], [
+                'error'  => $embedResult['message'],
+                'status' => $embedResult['status'],
+            ], $request);
+            $httpStatus = $embedResult['status'] === 422 ? 422 : 503;
+            return $this->errorResponse($embedResult['message'], $httpStatus, ['ai_error' => $embedResult]);
+        }
+        $embedding = data_get($embedResult, 'data.embedding');
+        if (!is_array($embedding)) {
+            $cleanup();
+            return $this->errorResponse('AI service returned an unexpected response.', 503, ['ai_response' => $embedResult['data']]);
+        }
+
+        // 2. Right-turn liveness
+        $rightResult = $this->ai->verifyFacePose($straightAbs, $rightAbs, 'right');
+        if (!$rightResult['success']) {
+            $cleanup();
+            $this->audit->log('onboarding_step4_pose_right_ai_failed', 'Worker', $worker_id, [], [
+                'error' => $rightResult['message'], 'status' => $rightResult['status'],
+            ], $request);
+            $httpStatus = $rightResult['status'] === 422 ? 422 : 503;
+            return $this->errorResponse($rightResult['message'], $httpStatus, ['ai_error' => $rightResult]);
+        }
+        $rightPassed = (bool) data_get($rightResult, 'data.passed');
+        $rightDelta  = (float) data_get($rightResult, 'data.delta_degrees', 0);
+        if (!$rightPassed) {
+            $cleanup();
+            $this->audit->log('onboarding_step4_pose_right_failed', 'Worker', $worker_id, [], [
+                'delta_degrees' => $rightDelta,
+            ], $request);
+            return $this->errorResponse(
+                'Right-turn liveness failed — please turn your head clearly to the right and retry.',
+                422,
+                ['pose_right' => ['passed' => false, 'delta_degrees' => $rightDelta]]
+            );
+        }
+
+        // 3. Left-turn liveness
+        $leftResult = $this->ai->verifyFacePose($straightAbs, $leftAbs, 'left');
+        if (!$leftResult['success']) {
+            $cleanup();
+            $this->audit->log('onboarding_step4_pose_left_ai_failed', 'Worker', $worker_id, [], [
+                'error' => $leftResult['message'], 'status' => $leftResult['status'],
+            ], $request);
+            $httpStatus = $leftResult['status'] === 422 ? 422 : 503;
+            return $this->errorResponse($leftResult['message'], $httpStatus, ['ai_error' => $leftResult]);
+        }
+        $leftPassed = (bool) data_get($leftResult, 'data.passed');
+        $leftDelta  = (float) data_get($leftResult, 'data.delta_degrees', 0);
+        if (!$leftPassed) {
+            $cleanup();
+            $this->audit->log('onboarding_step4_pose_left_failed', 'Worker', $worker_id, [], [
+                'delta_degrees' => $leftDelta,
+            ], $request);
+            return $this->errorResponse(
+                'Left-turn liveness failed — please turn your head clearly to the left and retry.',
+                422,
+                ['pose_left' => ['passed' => false, 'delta_degrees' => $leftDelta]]
+            );
+        }
+
+        // All 3 checks passed — save embedding and frame URLs
+        $straightUrl = Storage::url($straightPath);
         $worker->update([
-            'face_template_url' => $url,
+            'face_template_url' => $straightUrl,
+            'face_embedding'    => $embedding,
             'face_enrolled'     => true,
             'onboarding_status' => 'step4',
         ]);
 
-        $this->audit->log('onboarding_step4_face', 'Worker', $worker_id, [], ['face_template_url' => $url], $request);
+        $this->audit->log('onboarding_step4_face', 'Worker', $worker_id, [], [
+            'face_template_url'  => $straightUrl,
+            'spoof_prob'         => data_get($embedResult, 'data.spoof_prob'),
+            'quality'            => data_get($embedResult, 'data.quality'),
+            'pose_right_delta'   => $rightDelta,
+            'pose_left_delta'    => $leftDelta,
+        ], $request);
 
         return $this->successResponse([
-            'face_template_url' => $url,
-            'face_enrolled'     => true,
-            'onboarding_status' => $worker->onboarding_status,
-        ], 'Step 4 completed.');
+            'face_enrolled'      => true,
+            'face_template_url'  => $straightUrl,
+            'spoof_prob'         => data_get($embedResult, 'data.spoof_prob'),
+            'quality'            => data_get($embedResult, 'data.quality'),
+            'pose_right'         => ['passed' => true, 'delta_degrees' => $rightDelta],
+            'pose_left'          => ['passed' => true, 'delta_degrees' => $leftDelta],
+            'onboarding_status'  => $worker->onboarding_status,
+        ], 'Step 4 completed — face enrolment passed identity + liveness checks.');
     }
 
     // ─── Step 5: Voice biometric ──────────────────────────────────────────────
@@ -262,25 +375,76 @@ class OnboardingController extends Controller
             new OA\Response(response: 422, description: 'Validation error'),
         ]
     )]
-    public function step5(Step5Request $request, int $worker_id): JsonResponse
+    public function step5(Request $request, int $worker_id): JsonResponse
     {
-        $worker    = Worker::findOrFail($worker_id);
-        $timestamp = now()->format('YmdHis');
-        $filename  = "{$worker_id}_{$timestamp}.wav";
-        $path      = $request->file('voice_sample')->storeAs('biometrics/voices', $filename, 'public');
-        $url       = \Illuminate\Support\Facades\Storage::url($path);
+        $worker = Worker::findOrFail($worker_id);
 
-        $worker->update([
-            'voice_template_url' => $url,
-            'voice_enrolled'     => true,
-            'onboarding_status'  => 'step5',
+        // Web-only workers don't enrol a voice. Mark step done and move on.
+        if ($worker->verification_channel === 'web') {
+            $worker->update(['onboarding_status' => 'step5']);
+            $this->audit->log('onboarding_step5_skipped', 'Worker', $worker_id, [], [
+                'reason' => 'verification_channel=web',
+            ], $request);
+            return $this->successResponse([
+                'voice_enrolled'    => false,
+                'skipped'           => true,
+                'reason'            => 'Worker channel is web-only; voice enrolment not required.',
+                'onboarding_status' => $worker->onboarding_status,
+            ], 'Step 5 skipped (web-only worker).');
+        }
+
+        $request->validate([
+            'voice_sample' => 'required|file|mimes:wav,mp3,ogg,webm,m4a|max:10240',
         ]);
 
-        $this->audit->log('onboarding_step5_voice', 'Worker', $worker_id, [], ['voice_template_url' => $url], $request);
+        $timestamp = now()->format('YmdHis');
+        $extension = $request->file('voice_sample')->getClientOriginalExtension() ?: 'wav';
+        $filename  = "{$worker_id}_{$timestamp}.{$extension}";
+        $path      = $request->file('voice_sample')->storeAs('biometrics/voices', $filename, 'public');
+        $url       = Storage::url($path);
+        $absPath   = Storage::disk('public')->path($path);
+
+        // Run audio through the AI service to extract ECAPA + CAM++ voiceprints.
+        // If the AI rejects the clip (too short, no speech) or is unreachable,
+        // we don't keep the file or mark the worker as enrolled.
+        $result = $this->ai->embedVoice($absPath);
+
+        if (!$result['success']) {
+            Storage::disk('public')->delete($path);
+            $this->audit->log('onboarding_step5_voice_ai_failed', 'Worker', $worker_id, [], [
+                'error'  => $result['message'],
+                'status' => $result['status'],
+            ], $request);
+            $httpStatus = $result['status'] === 422 ? 422 : 503;
+            return $this->errorResponse($result['message'], $httpStatus, ['ai_error' => $result]);
+        }
+
+        $ecapa    = data_get($result, 'data.embeddings.ecapa');
+        $campplus = data_get($result, 'data.embeddings.campplus');
+        if (!is_array($ecapa) || !is_array($campplus)) {
+            Storage::disk('public')->delete($path);
+            return $this->errorResponse('AI service returned an unexpected response.', 503, ['ai_response' => $result['data']]);
+        }
+
+        $worker->update([
+            'voice_template_url'       => $url,
+            'voice_embedding_ecapa'    => $ecapa,
+            'voice_embedding_campplus' => $campplus,
+            'voice_enrolled'           => true,
+            'onboarding_status'        => 'step5',
+        ]);
+
+        $this->audit->log('onboarding_step5_voice', 'Worker', $worker_id, [], [
+            'voice_template_url' => $url,
+            'spoof_prob'         => data_get($result, 'data.spoof_prob'),
+            'duration_sec'       => data_get($result, 'data.quality.duration_sec'),
+        ], $request);
 
         return $this->successResponse([
-            'voice_template_url' => $url,
             'voice_enrolled'     => true,
+            'voice_template_url' => $url,
+            'spoof_prob'         => data_get($result, 'data.spoof_prob'),
+            'quality'            => data_get($result, 'data.quality'),
             'onboarding_status'  => $worker->onboarding_status,
         ], 'Step 5 completed.');
     }
@@ -365,24 +529,28 @@ class OnboardingController extends Controller
             );
         }
 
-        if (!$worker->face_enrolled) {
+        // Channel-aware biometric requirements: phone-only skips face, web-only skips voice.
+        $needsFace  = in_array($worker->verification_channel, ['web', 'both'], true);
+        $needsVoice = in_array($worker->verification_channel, ['phone', 'both'], true);
+
+        if ($needsFace && !$worker->face_enrolled) {
             return $this->errorResponse('Face biometric not enrolled (step 4 incomplete).', 422);
         }
 
-        if (!$worker->voice_enrolled) {
+        if ($needsVoice && !$worker->voice_enrolled) {
             return $this->errorResponse('Voice biometric not enrolled (step 5 incomplete).', 422);
         }
 
+        // Worker now goes to pending_review — admin still has to activate before
+        // automated verification kicks in. This applies to both admin-kiosk and
+        // worker-self-enrol paths; the gatekeeping happens after biometric capture.
         $worker->update([
-            'status'            => 'active',
+            'status'            => 'pending_review',
             'onboarding_status' => 'completed',
-            'enrolled_at'       => now(),
         ]);
 
-        WorkerEnrolledEvent::dispatch($worker);
-
-        $this->audit->log('worker_enrolled', 'Worker', $worker->id, [], [
-            'status'            => 'active',
+        $this->audit->log('worker_pending_review', 'Worker', $worker->id, [], [
+            'status'            => 'pending_review',
             'onboarding_status' => 'completed',
         ], $request);
 
@@ -390,8 +558,8 @@ class OnboardingController extends Controller
             'worker_id'   => $worker->id,
             'ippis_id'    => $worker->ippis_id,
             'status'      => $worker->status,
-            'enrolled_at' => $worker->enrolled_at,
-        ], 'Worker successfully enrolled.');
+            'next_action' => 'admin_review',
+        ], 'Onboarding submitted — awaiting admin review and activation.');
     }
 
     // ─── Status: Check progress ───────────────────────────────────────────────

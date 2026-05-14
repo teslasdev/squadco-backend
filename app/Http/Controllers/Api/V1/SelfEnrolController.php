@@ -1,0 +1,398 @@
+<?php
+
+namespace App\Http\Controllers\Api\V1;
+
+use App\Http\Controllers\Controller;
+use App\Models\Worker;
+use App\Services\AiVerificationService;
+use App\Services\AuditService;
+use Illuminate\Http\JsonResponse;
+use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Storage;
+use OpenApi\Attributes as OA;
+
+/**
+ * Public, token-authenticated self-enrolment endpoints.
+ *
+ * A worker scans a QR code printed at a government office which contains a URL
+ * pointing at /api/v1/self-enrol/{token}. From there they can confirm personal
+ * info, capture face frames, record a voice sample, and submit for review. No
+ * Sanctum auth — the unguessable UUID token in the URL is the auth.
+ *
+ * After /submit, the token is invalidated by flipping the worker status to
+ * pending_review; admins re-issue a fresh token via the activation controller
+ * if a worker needs to redo the flow.
+ */
+#[OA\Tag(name: 'Self Enrolment', description: 'Worker-driven onboarding via QR-code token (no auth)')]
+class SelfEnrolController extends Controller
+{
+    public function __construct(
+        private AiVerificationService $ai,
+        private AuditService $audit
+    ) {}
+
+    /**
+     * Find the worker for a given token, or return a 404/410 response.
+     * Returns Worker on success, JsonResponse on error.
+     */
+    private function findWorkerByToken(string $token): Worker|JsonResponse
+    {
+        $worker = Worker::with('mda', 'department')->where('onboarding_token', $token)->first();
+        if (!$worker) {
+            return $this->errorResponse('Invalid or expired enrolment link.', 404);
+        }
+        // Once status moves past pending_self_enrol the token can no longer be used.
+        if ($worker->status !== 'pending_self_enrol') {
+            return $this->errorResponse('This enrolment link has already been used or is no longer active.', 410);
+        }
+        return $worker;
+    }
+
+    // ─── GET /self-enrol/{token} ────────────────────────────────────────────
+
+    #[OA\Get(
+        path: '/self-enrol/{token}',
+        operationId: 'selfEnrolShow',
+        tags: ['Self Enrolment'],
+        summary: 'Worker view — what info to confirm, which biometric captures are pending',
+        parameters: [new OA\Parameter(name: 'token', in: 'path', required: true, schema: new OA\Schema(type: 'string'))],
+        responses: [
+            new OA\Response(response: 200, description: 'Worker context for the self-enrol UI'),
+            new OA\Response(response: 404, description: 'Invalid token'),
+            new OA\Response(response: 410, description: 'Token already used'),
+        ]
+    )]
+    public function show(string $token): JsonResponse
+    {
+        $worker = $this->findWorkerByToken($token);
+        if ($worker instanceof JsonResponse) return $worker;
+
+        $needsFace  = in_array($worker->verification_channel, ['web', 'both'], true);
+        $needsVoice = in_array($worker->verification_channel, ['phone', 'both'], true);
+
+        $pendingSteps = [];
+        // step2 (personal info) is always needed if not already filled (we detect by nin presence)
+        if (empty($worker->nin) || empty($worker->bvn) || empty($worker->phone)) {
+            $pendingSteps[] = 'step2';
+        }
+        if ($needsFace && !$worker->face_enrolled) {
+            $pendingSteps[] = 'step4';
+        }
+        if ($needsVoice && !$worker->voice_enrolled) {
+            $pendingSteps[] = 'step5';
+        }
+
+        return $this->successResponse([
+            'worker_id'            => $worker->id,
+            'full_name'            => $worker->full_name,
+            'ippis_id'             => $worker->ippis_id,
+            'mda_name'             => $worker->mda?->name,
+            'department_name'      => $worker->department?->name,
+            'job_title'            => $worker->job_title,
+            'verification_channel' => $worker->verification_channel,
+            'onboarding_status'    => $worker->onboarding_status,
+            'pending_steps'        => $pendingSteps,
+            'can_submit'           => empty($pendingSteps),
+        ], 'Self-enrol context loaded.');
+    }
+
+    // ─── PUT /self-enrol/{token}/step2 ──────────────────────────────────────
+
+    #[OA\Put(
+        path: '/self-enrol/{token}/step2',
+        operationId: 'selfEnrolStep2',
+        tags: ['Self Enrolment'],
+        summary: 'Worker submits personal/identity details',
+        parameters: [new OA\Parameter(name: 'token', in: 'path', required: true, schema: new OA\Schema(type: 'string'))],
+        requestBody: new OA\RequestBody(
+            required: true,
+            content: new OA\JsonContent(
+                required: ['nin', 'bvn', 'phone', 'email', 'home_address', 'next_of_kin_name', 'next_of_kin_phone', 'next_of_kin_relationship'],
+                properties: [
+                    new OA\Property(property: 'nin',                      type: 'string'),
+                    new OA\Property(property: 'bvn',                      type: 'string'),
+                    new OA\Property(property: 'phone',                    type: 'string'),
+                    new OA\Property(property: 'email',                    type: 'string'),
+                    new OA\Property(property: 'home_address',             type: 'string'),
+                    new OA\Property(property: 'next_of_kin_name',         type: 'string'),
+                    new OA\Property(property: 'next_of_kin_phone',        type: 'string'),
+                    new OA\Property(property: 'next_of_kin_relationship', type: 'string'),
+                ]
+            )
+        ),
+        responses: [
+            new OA\Response(response: 200, description: 'Personal info saved'),
+            new OA\Response(response: 422, description: 'Validation error'),
+        ]
+    )]
+    public function step2(Request $request, string $token): JsonResponse
+    {
+        $worker = $this->findWorkerByToken($token);
+        if ($worker instanceof JsonResponse) return $worker;
+
+        $data = $request->validate([
+            'nin'                      => ['required', 'string', 'size:11', \Illuminate\Validation\Rule::unique('workers', 'nin')->ignore($worker->id)],
+            'bvn'                      => ['required', 'string', 'size:11', \Illuminate\Validation\Rule::unique('workers', 'bvn')->ignore($worker->id)],
+            'phone'                    => 'required|string|size:11',
+            'email'                    => ['required', 'email', \Illuminate\Validation\Rule::unique('workers', 'email')->ignore($worker->id)],
+            'home_address'             => 'required|string',
+            'next_of_kin_name'         => 'required|string',
+            'next_of_kin_phone'        => 'required|string|size:11',
+            'next_of_kin_relationship' => 'required|string',
+        ]);
+
+        $worker->update($data + ['onboarding_status' => 'step2']);
+
+        $this->audit->log('self_enrol_step2', 'Worker', $worker->id, [], $data, $request);
+
+        return $this->successResponse([
+            'onboarding_status' => $worker->onboarding_status,
+        ], 'Step 2 saved.');
+    }
+
+    // ─── POST /self-enrol/{token}/step4 ─────────────────────────────────────
+
+    #[OA\Post(
+        path: '/self-enrol/{token}/step4',
+        operationId: 'selfEnrolStep4',
+        tags: ['Self Enrolment'],
+        summary: 'Worker captures 3 face frames from their phone (or skipped for phone-only)',
+        parameters: [new OA\Parameter(name: 'token', in: 'path', required: true, schema: new OA\Schema(type: 'string'))],
+        responses: [
+            new OA\Response(response: 200, description: 'Face enrolment completed or skipped'),
+            new OA\Response(response: 422, description: 'Identity or liveness FAIL'),
+            new OA\Response(response: 503, description: 'AI service unreachable'),
+        ]
+    )]
+    public function step4(Request $request, string $token): JsonResponse
+    {
+        $worker = $this->findWorkerByToken($token);
+        if ($worker instanceof JsonResponse) return $worker;
+
+        if ($worker->verification_channel === 'phone') {
+            $worker->update(['onboarding_status' => 'step4']);
+            return $this->successResponse([
+                'face_enrolled'     => false,
+                'skipped'           => true,
+                'reason'            => 'Worker channel is phone-only; face enrolment not required.',
+                'onboarding_status' => $worker->onboarding_status,
+            ], 'Step 4 skipped (phone-only worker).');
+        }
+
+        $request->validate([
+            'frame_straight' => 'required|file|mimes:jpg,jpeg,png,webp|max:5120',
+            'frame_right'    => 'required|file|mimes:jpg,jpeg,png,webp|max:5120',
+            'frame_left'     => 'required|file|mimes:jpg,jpeg,png,webp|max:5120',
+        ]);
+
+        $timestamp = now()->format('YmdHis');
+        $straightPath = $request->file('frame_straight')->storeAs("biometrics/faces/{$worker->id}", "{$timestamp}_straight.jpg", 'public');
+        $rightPath    = $request->file('frame_right')->storeAs("biometrics/faces/{$worker->id}", "{$timestamp}_right.jpg", 'public');
+        $leftPath     = $request->file('frame_left')->storeAs("biometrics/faces/{$worker->id}", "{$timestamp}_left.jpg", 'public');
+
+        $straightAbs = Storage::disk('public')->path($straightPath);
+        $rightAbs    = Storage::disk('public')->path($rightPath);
+        $leftAbs     = Storage::disk('public')->path($leftPath);
+
+        $cleanup = function () use ($straightPath, $rightPath, $leftPath) {
+            Storage::disk('public')->delete([$straightPath, $rightPath, $leftPath]);
+        };
+
+        // 1. Identity embedding from the straight frame
+        $embedResult = $this->ai->embedFace($straightAbs);
+        if (!$embedResult['success']) {
+            $cleanup();
+            $this->audit->log('self_enrol_step4_embed_failed', 'Worker', $worker->id, [], [
+                'error' => $embedResult['message'], 'status' => $embedResult['status'],
+            ], $request);
+            return $this->errorResponse($embedResult['message'], $embedResult['status'] === 422 ? 422 : 503, ['ai_error' => $embedResult]);
+        }
+        $embedding = data_get($embedResult, 'data.embedding');
+        if (!is_array($embedding)) {
+            $cleanup();
+            return $this->errorResponse('AI service returned an unexpected response.', 503);
+        }
+
+        // 2. Right-turn liveness
+        $rightResult = $this->ai->verifyFacePose($straightAbs, $rightAbs, 'right');
+        if (!$rightResult['success'] || !(bool) data_get($rightResult, 'data.passed')) {
+            $cleanup();
+            $rightDelta = (float) data_get($rightResult, 'data.delta_degrees', 0);
+            return $this->errorResponse(
+                'Right-turn liveness failed — please turn your head clearly to the right and retry.',
+                422,
+                ['pose_right' => ['passed' => false, 'delta_degrees' => $rightDelta]]
+            );
+        }
+        $rightDelta = (float) data_get($rightResult, 'data.delta_degrees', 0);
+
+        // 3. Left-turn liveness
+        $leftResult = $this->ai->verifyFacePose($straightAbs, $leftAbs, 'left');
+        if (!$leftResult['success'] || !(bool) data_get($leftResult, 'data.passed')) {
+            $cleanup();
+            $leftDelta = (float) data_get($leftResult, 'data.delta_degrees', 0);
+            return $this->errorResponse(
+                'Left-turn liveness failed — please turn your head clearly to the left and retry.',
+                422,
+                ['pose_left' => ['passed' => false, 'delta_degrees' => $leftDelta]]
+            );
+        }
+        $leftDelta = (float) data_get($leftResult, 'data.delta_degrees', 0);
+
+        $straightUrl = Storage::url($straightPath);
+        $worker->update([
+            'face_template_url' => $straightUrl,
+            'face_embedding'    => $embedding,
+            'face_enrolled'     => true,
+            'onboarding_status' => 'step4',
+        ]);
+
+        $this->audit->log('self_enrol_step4_face', 'Worker', $worker->id, [], [
+            'face_template_url' => $straightUrl,
+            'spoof_prob'        => data_get($embedResult, 'data.spoof_prob'),
+            'pose_right_delta'  => $rightDelta,
+            'pose_left_delta'   => $leftDelta,
+        ], $request);
+
+        return $this->successResponse([
+            'face_enrolled'     => true,
+            'face_template_url' => $straightUrl,
+            'spoof_prob'        => data_get($embedResult, 'data.spoof_prob'),
+            'quality'           => data_get($embedResult, 'data.quality'),
+            'pose_right'        => ['passed' => true, 'delta_degrees' => $rightDelta],
+            'pose_left'         => ['passed' => true, 'delta_degrees' => $leftDelta],
+            'onboarding_status' => $worker->onboarding_status,
+        ], 'Step 4 completed — face enrolment passed identity + liveness checks.');
+    }
+
+    // ─── POST /self-enrol/{token}/step5 ─────────────────────────────────────
+
+    #[OA\Post(
+        path: '/self-enrol/{token}/step5',
+        operationId: 'selfEnrolStep5',
+        tags: ['Self Enrolment'],
+        summary: 'Worker uploads a voice sample (or skipped for web-only)',
+        parameters: [new OA\Parameter(name: 'token', in: 'path', required: true, schema: new OA\Schema(type: 'string'))],
+        responses: [
+            new OA\Response(response: 200, description: 'Voice enrolment completed or skipped'),
+            new OA\Response(response: 422, description: 'Audio rejected'),
+            new OA\Response(response: 503, description: 'AI service unreachable'),
+        ]
+    )]
+    public function step5(Request $request, string $token): JsonResponse
+    {
+        $worker = $this->findWorkerByToken($token);
+        if ($worker instanceof JsonResponse) return $worker;
+
+        if ($worker->verification_channel === 'web') {
+            $worker->update(['onboarding_status' => 'step5']);
+            return $this->successResponse([
+                'voice_enrolled'    => false,
+                'skipped'           => true,
+                'reason'            => 'Worker channel is web-only; voice enrolment not required.',
+                'onboarding_status' => $worker->onboarding_status,
+            ], 'Step 5 skipped (web-only worker).');
+        }
+
+        $request->validate([
+            'voice_sample' => 'required|file|mimes:wav,mp3,ogg,webm,m4a|max:10240',
+        ]);
+
+        $timestamp = now()->format('YmdHis');
+        $extension = $request->file('voice_sample')->getClientOriginalExtension() ?: 'wav';
+        $filename  = "{$worker->id}_{$timestamp}.{$extension}";
+        $path      = $request->file('voice_sample')->storeAs('biometrics/voices', $filename, 'public');
+        $absPath   = Storage::disk('public')->path($path);
+
+        $result = $this->ai->embedVoice($absPath);
+        if (!$result['success']) {
+            Storage::disk('public')->delete($path);
+            return $this->errorResponse($result['message'], $result['status'] === 422 ? 422 : 503, ['ai_error' => $result]);
+        }
+        $ecapa    = data_get($result, 'data.embeddings.ecapa');
+        $campplus = data_get($result, 'data.embeddings.campplus');
+        if (!is_array($ecapa) || !is_array($campplus)) {
+            Storage::disk('public')->delete($path);
+            return $this->errorResponse('AI service returned an unexpected response.', 503);
+        }
+
+        $url = Storage::url($path);
+        $worker->update([
+            'voice_template_url'       => $url,
+            'voice_embedding_ecapa'    => $ecapa,
+            'voice_embedding_campplus' => $campplus,
+            'voice_enrolled'           => true,
+            'onboarding_status'        => 'step5',
+        ]);
+
+        $this->audit->log('self_enrol_step5_voice', 'Worker', $worker->id, [], [
+            'voice_template_url' => $url,
+            'spoof_prob'         => data_get($result, 'data.spoof_prob'),
+        ], $request);
+
+        return $this->successResponse([
+            'voice_enrolled'     => true,
+            'voice_template_url' => $url,
+            'spoof_prob'         => data_get($result, 'data.spoof_prob'),
+            'quality'            => data_get($result, 'data.quality'),
+            'onboarding_status'  => $worker->onboarding_status,
+        ], 'Step 5 completed.');
+    }
+
+    // ─── POST /self-enrol/{token}/submit ────────────────────────────────────
+
+    #[OA\Post(
+        path: '/self-enrol/{token}/submit',
+        operationId: 'selfEnrolSubmit',
+        tags: ['Self Enrolment'],
+        summary: 'Worker finalises submission — moves status to pending_review',
+        parameters: [new OA\Parameter(name: 'token', in: 'path', required: true, schema: new OA\Schema(type: 'string'))],
+        responses: [
+            new OA\Response(response: 200, description: 'Submitted for admin review'),
+            new OA\Response(response: 422, description: 'Some required steps still pending'),
+        ]
+    )]
+    public function submit(Request $request, string $token): JsonResponse
+    {
+        $worker = $this->findWorkerByToken($token);
+        if ($worker instanceof JsonResponse) return $worker;
+
+        // Check the worker has filled everything required for their channel.
+        $needsFace  = in_array($worker->verification_channel, ['web', 'both'], true);
+        $needsVoice = in_array($worker->verification_channel, ['phone', 'both'], true);
+
+        $missing = [];
+        if (empty($worker->nin) || empty($worker->bvn) || empty($worker->phone)) {
+            $missing[] = 'step2';
+        }
+        if ($needsFace && !$worker->face_enrolled) {
+            $missing[] = 'step4';
+        }
+        if ($needsVoice && !$worker->voice_enrolled) {
+            $missing[] = 'step5';
+        }
+
+        if (!empty($missing)) {
+            return $this->errorResponse(
+                'Cannot submit — the following steps are still pending: ' . implode(', ', $missing),
+                422,
+                ['pending_steps' => $missing]
+            );
+        }
+
+        $worker->update([
+            'status'            => 'pending_review',
+            'onboarding_status' => 'completed',
+        ]);
+
+        $this->audit->log('self_enrol_submitted', 'Worker', $worker->id, [], [
+            'status' => 'pending_review',
+        ], $request);
+
+        return $this->successResponse([
+            'worker_id'   => $worker->id,
+            'status'      => $worker->status,
+            'next_action' => 'admin_review',
+        ], 'Submitted for review. An admin will activate your account within 24 hours.');
+    }
+}

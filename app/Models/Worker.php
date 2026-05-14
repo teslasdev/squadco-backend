@@ -42,18 +42,23 @@ class Worker extends Model
         'salary_amount', 'bank_name', 'bank_code', 'bank_account_number', 'bank_account_name',
         'status', 'onboarding_status', 'onboarding_token',
         'enrolled_at', 'last_verified_at',
-        'face_template_url', 'face_enrolled',
+        'face_template_url', 'face_enrolled', 'face_embedding',
         'voice_template_url', 'voice_enrolled',
+        'voice_embedding_ecapa', 'voice_embedding_campplus',
+        'verification_channel',
     ];
 
     protected $casts = [
-        'enrolled_at'      => 'datetime',
-        'last_verified_at' => 'datetime',
-        'employment_date'  => 'date',
-        'date_of_birth'    => 'date',
-        'salary_amount'    => 'decimal:2',
-        'face_enrolled'    => 'boolean',
-        'voice_enrolled'   => 'boolean',
+        'enrolled_at'              => 'datetime',
+        'last_verified_at'         => 'datetime',
+        'employment_date'          => 'date',
+        'date_of_birth'            => 'date',
+        'salary_amount'            => 'decimal:2',
+        'face_enrolled'            => 'boolean',
+        'voice_enrolled'           => 'boolean',
+        'face_embedding'           => 'array',
+        'voice_embedding_ecapa'    => 'array',
+        'voice_embedding_campplus' => 'array',
     ];
 
     public function mda()

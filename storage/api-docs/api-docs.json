@@ -1,0 +1,3585 @@
+{
+    "openapi": "3.0.0",
+    "info": {
+        "title": "Alive — Ghost Worker Verification API",
+        "description": "AI proof-of-life verification system for Nigerian government payroll.",
+        "contact": {
+            "email": "api@sentinelbloom.com"
+        },
+        "version": "1.0.0"
+    },
+    "servers": [
+        {
+            "url": "/api/v1",
+            "description": "API v1"
+        }
+    ],
+    "paths": {
+        "/audit-logs": {
+            "get": {
+                "tags": [
+                    "Audit Logs"
+                ],
+                "summary": "List audit logs",
+                "operationId": "auditLogIndex",
+                "parameters": [
+                    {
+                        "name": "action",
+                        "in": "query",
+                        "required": false,
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    {
+                        "name": "entity_type",
+                        "in": "query",
+                        "required": false,
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    {
+                        "name": "user_id",
+                        "in": "query",
+                        "required": false,
+                        "schema": {
+                            "type": "integer"
+                        }
+                    },
+                    {
+                        "name": "from",
+                        "in": "query",
+                        "required": false,
+                        "schema": {
+                            "type": "string",
+                            "format": "date"
+                        }
+                    },
+                    {
+                        "name": "to",
+                        "in": "query",
+                        "required": false,
+                        "schema": {
+                            "type": "string",
+                            "format": "date"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Paginated audit logs"
+                    }
+                },
+                "security": [
+                    {
+                        "bearerAuth": []
+                    }
+                ]
+            }
+        },
+        "/audit-logs/{id}": {
+            "get": {
+                "tags": [
+                    "Audit Logs"
+                ],
+                "summary": "Get a single audit log entry",
+                "operationId": "auditLogShow",
+                "parameters": [
+                    {
+                        "name": "id",
+                        "in": "path",
+                        "required": true,
+                        "schema": {
+                            "type": "integer"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Audit log detail"
+                    },
+                    "404": {
+                        "description": "Not found"
+                    }
+                },
+                "security": [
+                    {
+                        "bearerAuth": []
+                    }
+                ]
+            }
+        },
+        "/dashboard/stats": {
+            "get": {
+                "tags": [
+                    "Dashboard"
+                ],
+                "summary": "Get system-wide dashboard statistics",
+                "operationId": "dashboardStats",
+                "responses": {
+                    "200": {
+                        "description": "Dashboard stats"
+                    }
+                },
+                "security": [
+                    {
+                        "bearerAuth": []
+                    }
+                ]
+            }
+        },
+        "/mdas/{mda_id}/departments": {
+            "get": {
+                "tags": [
+                    "Departments"
+                ],
+                "summary": "List departments in an MDA",
+                "operationId": "departmentIndex",
+                "parameters": [
+                    {
+                        "name": "mda_id",
+                        "in": "path",
+                        "required": true,
+                        "schema": {
+                            "type": "integer"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "List of departments with worker counts"
+                    }
+                },
+                "security": [
+                    {
+                        "bearerAuth": []
+                    }
+                ]
+            },
+            "post": {
+                "tags": [
+                    "Departments"
+                ],
+                "summary": "Create a department in an MDA",
+                "operationId": "departmentStore",
+                "parameters": [
+                    {
+                        "name": "mda_id",
+                        "in": "path",
+                        "required": true,
+                        "schema": {
+                            "type": "integer"
+                        }
+                    }
+                ],
+                "requestBody": {
+                    "required": true,
+                    "content": {
+                        "application/json": {
+                            "schema": {
+                                "required": [
+                                    "name",
+                                    "code"
+                                ],
+                                "properties": {
+                                    "name": {
+                                        "type": "string",
+                                        "example": "Human Resources"
+                                    },
+                                    "code": {
+                                        "type": "string",
+                                        "example": "HR-001"
+                                    }
+                                },
+                                "type": "object"
+                            }
+                        }
+                    }
+                },
+                "responses": {
+                    "201": {
+                        "description": "Department created"
+                    },
+                    "422": {
+                        "description": "Validation error"
+                    }
+                },
+                "security": [
+                    {
+                        "bearerAuth": []
+                    }
+                ]
+            }
+        },
+        "/departments/{id}": {
+            "put": {
+                "tags": [
+                    "Departments"
+                ],
+                "summary": "Update a department",
+                "operationId": "departmentUpdate",
+                "parameters": [
+                    {
+                        "name": "id",
+                        "in": "path",
+                        "required": true,
+                        "schema": {
+                            "type": "integer"
+                        }
+                    }
+                ],
+                "requestBody": {
+                    "content": {
+                        "application/json": {
+                            "schema": {
+                                "properties": {
+                                    "name": {
+                                        "type": "string"
+                                    },
+                                    "code": {
+                                        "type": "string"
+                                    }
+                                },
+                                "type": "object"
+                            }
+                        }
+                    }
+                },
+                "responses": {
+                    "200": {
+                        "description": "Department updated"
+                    },
+                    "404": {
+                        "description": "Not found"
+                    }
+                },
+                "security": [
+                    {
+                        "bearerAuth": []
+                    }
+                ]
+            },
+            "delete": {
+                "tags": [
+                    "Departments"
+                ],
+                "summary": "Delete a department",
+                "operationId": "departmentDestroy",
+                "parameters": [
+                    {
+                        "name": "id",
+                        "in": "path",
+                        "required": true,
+                        "schema": {
+                            "type": "integer"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Department deleted"
+                    },
+                    "404": {
+                        "description": "Not found"
+                    }
+                },
+                "security": [
+                    {
+                        "bearerAuth": []
+                    }
+                ]
+            }
+        },
+        "/dispatches": {
+            "get": {
+                "tags": [
+                    "Dispatches"
+                ],
+                "summary": "List all dispatches",
+                "operationId": "dispatchIndex",
+                "responses": {
+                    "200": {
+                        "description": "Paginated dispatches"
+                    }
+                },
+                "security": [
+                    {
+                        "bearerAuth": []
+                    }
+                ]
+            }
+        },
+        "/dispatches/{id}": {
+            "get": {
+                "tags": [
+                    "Dispatches"
+                ],
+                "summary": "Get a single dispatch",
+                "operationId": "dispatchShow",
+                "parameters": [
+                    {
+                        "name": "id",
+                        "in": "path",
+                        "required": true,
+                        "schema": {
+                            "type": "integer"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Dispatch detail"
+                    },
+                    "404": {
+                        "description": "Not found"
+                    }
+                },
+                "security": [
+                    {
+                        "bearerAuth": []
+                    }
+                ]
+            }
+        },
+        "/dispatches/{id}/complete": {
+            "put": {
+                "tags": [
+                    "Dispatches"
+                ],
+                "summary": "Mark a dispatch as completed",
+                "operationId": "dispatchComplete",
+                "parameters": [
+                    {
+                        "name": "id",
+                        "in": "path",
+                        "required": true,
+                        "schema": {
+                            "type": "integer"
+                        }
+                    }
+                ],
+                "requestBody": {
+                    "content": {
+                        "application/json": {
+                            "schema": {
+                                "properties": {
+                                    "notes": {
+                                        "type": "string",
+                                        "example": "Worker confirmed present and alive"
+                                    }
+                                },
+                                "type": "object"
+                            }
+                        }
+                    }
+                },
+                "responses": {
+                    "200": {
+                        "description": "Dispatch completed"
+                    }
+                },
+                "security": [
+                    {
+                        "bearerAuth": []
+                    }
+                ]
+            }
+        },
+        "/dispatches/{id}/fail": {
+            "put": {
+                "tags": [
+                    "Dispatches"
+                ],
+                "summary": "Mark a dispatch as failed",
+                "operationId": "dispatchFail",
+                "parameters": [
+                    {
+                        "name": "id",
+                        "in": "path",
+                        "required": true,
+                        "schema": {
+                            "type": "integer"
+                        }
+                    }
+                ],
+                "requestBody": {
+                    "content": {
+                        "application/json": {
+                            "schema": {
+                                "properties": {
+                                    "notes": {
+                                        "type": "string",
+                                        "example": "Address does not exist"
+                                    }
+                                },
+                                "type": "object"
+                            }
+                        }
+                    }
+                },
+                "responses": {
+                    "200": {
+                        "description": "Dispatch marked as failed"
+                    }
+                },
+                "security": [
+                    {
+                        "bearerAuth": []
+                    }
+                ]
+            }
+        },
+        "/agents": {
+            "get": {
+                "tags": [
+                    "Field Agents"
+                ],
+                "summary": "List all field agents",
+                "operationId": "agentIndex",
+                "responses": {
+                    "200": {
+                        "description": "Paginated agents"
+                    }
+                },
+                "security": [
+                    {
+                        "bearerAuth": []
+                    }
+                ]
+            },
+            "post": {
+                "tags": [
+                    "Field Agents"
+                ],
+                "summary": "Register a new field agent",
+                "operationId": "agentStore",
+                "requestBody": {
+                    "required": true,
+                    "content": {
+                        "application/json": {
+                            "schema": {
+                                "required": [
+                                    "user_id",
+                                    "agent_code",
+                                    "name",
+                                    "phone",
+                                    "state",
+                                    "lga"
+                                ],
+                                "properties": {
+                                    "user_id": {
+                                        "type": "integer",
+                                        "example": 5
+                                    },
+                                    "agent_code": {
+                                        "type": "string",
+                                        "example": "AGT-001"
+                                    },
+                                    "name": {
+                                        "type": "string",
+                                        "example": "Emeka Obi"
+                                    },
+                                    "phone": {
+                                        "type": "string",
+                                        "example": "08090001234"
+                                    },
+                                    "state": {
+                                        "type": "string",
+                                        "example": "Anambra"
+                                    },
+                                    "lga": {
+                                        "type": "string",
+                                        "example": "Awka South"
+                                    }
+                                },
+                                "type": "object"
+                            }
+                        }
+                    }
+                },
+                "responses": {
+                    "201": {
+                        "description": "Agent registered"
+                    },
+                    "422": {
+                        "description": "Validation error"
+                    }
+                },
+                "security": [
+                    {
+                        "bearerAuth": []
+                    }
+                ]
+            }
+        },
+        "/agents/{id}": {
+            "get": {
+                "tags": [
+                    "Field Agents"
+                ],
+                "summary": "Get a single field agent",
+                "operationId": "agentShow",
+                "parameters": [
+                    {
+                        "name": "id",
+                        "in": "path",
+                        "required": true,
+                        "schema": {
+                            "type": "integer"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Agent detail"
+                    },
+                    "404": {
+                        "description": "Not found"
+                    }
+                },
+                "security": [
+                    {
+                        "bearerAuth": []
+                    }
+                ]
+            },
+            "put": {
+                "tags": [
+                    "Field Agents"
+                ],
+                "summary": "Update a field agent",
+                "operationId": "agentUpdate",
+                "parameters": [
+                    {
+                        "name": "id",
+                        "in": "path",
+                        "required": true,
+                        "schema": {
+                            "type": "integer"
+                        }
+                    }
+                ],
+                "requestBody": {
+                    "content": {
+                        "application/json": {
+                            "schema": {
+                                "properties": {
+                                    "name": {
+                                        "type": "string"
+                                    },
+                                    "phone": {
+                                        "type": "string"
+                                    },
+                                    "state": {
+                                        "type": "string"
+                                    },
+                                    "lga": {
+                                        "type": "string"
+                                    },
+                                    "status": {
+                                        "type": "string",
+                                        "enum": [
+                                            "active",
+                                            "inactive"
+                                        ]
+                                    }
+                                },
+                                "type": "object"
+                            }
+                        }
+                    }
+                },
+                "responses": {
+                    "200": {
+                        "description": "Agent updated"
+                    },
+                    "404": {
+                        "description": "Not found"
+                    }
+                },
+                "security": [
+                    {
+                        "bearerAuth": []
+                    }
+                ]
+            }
+        },
+        "/agents/{id}/dispatches": {
+            "get": {
+                "tags": [
+                    "Field Agents"
+                ],
+                "summary": "List dispatches for a field agent",
+                "operationId": "agentDispatches",
+                "parameters": [
+                    {
+                        "name": "id",
+                        "in": "path",
+                        "required": true,
+                        "schema": {
+                            "type": "integer"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Paginated dispatches"
+                    }
+                },
+                "security": [
+                    {
+                        "bearerAuth": []
+                    }
+                ]
+            }
+        },
+        "/agents/{id}/update-location": {
+            "post": {
+                "tags": [
+                    "Field Agents"
+                ],
+                "summary": "Update GPS location of a field agent",
+                "operationId": "agentUpdateLocation",
+                "parameters": [
+                    {
+                        "name": "id",
+                        "in": "path",
+                        "required": true,
+                        "schema": {
+                            "type": "integer"
+                        }
+                    }
+                ],
+                "requestBody": {
+                    "required": true,
+                    "content": {
+                        "application/json": {
+                            "schema": {
+                                "required": [
+                                    "lat",
+                                    "lng"
+                                ],
+                                "properties": {
+                                    "lat": {
+                                        "type": "number",
+                                        "format": "float",
+                                        "example": 6.5244
+                                    },
+                                    "lng": {
+                                        "type": "number",
+                                        "format": "float",
+                                        "example": 3.3792
+                                    }
+                                },
+                                "type": "object"
+                            }
+                        }
+                    }
+                },
+                "responses": {
+                    "200": {
+                        "description": "Location updated"
+                    }
+                },
+                "security": [
+                    {
+                        "bearerAuth": []
+                    }
+                ]
+            }
+        },
+        "/alerts": {
+            "get": {
+                "tags": [
+                    "Ghost Worker Alerts"
+                ],
+                "summary": "List ghost worker alerts",
+                "operationId": "alertIndex",
+                "parameters": [
+                    {
+                        "name": "severity",
+                        "in": "query",
+                        "required": false,
+                        "schema": {
+                            "type": "string",
+                            "enum": [
+                                "low",
+                                "medium",
+                                "high",
+                                "critical"
+                            ]
+                        }
+                    },
+                    {
+                        "name": "status",
+                        "in": "query",
+                        "required": false,
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    {
+                        "name": "mda_id",
+                        "in": "query",
+                        "required": false,
+                        "schema": {
+                            "type": "integer"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Paginated alerts"
+                    }
+                },
+                "security": [
+                    {
+                        "bearerAuth": []
+                    }
+                ]
+            }
+        },
+        "/alerts/{id}": {
+            "get": {
+                "tags": [
+                    "Ghost Worker Alerts"
+                ],
+                "summary": "Get a single alert with dispatch history",
+                "operationId": "alertShow",
+                "parameters": [
+                    {
+                        "name": "id",
+                        "in": "path",
+                        "required": true,
+                        "schema": {
+                            "type": "integer"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Alert detail"
+                    },
+                    "404": {
+                        "description": "Not found"
+                    }
+                },
+                "security": [
+                    {
+                        "bearerAuth": []
+                    }
+                ]
+            }
+        },
+        "/alerts/{id}/block": {
+            "post": {
+                "tags": [
+                    "Ghost Worker Alerts"
+                ],
+                "summary": "Block salary for a ghost alert",
+                "operationId": "alertBlock",
+                "parameters": [
+                    {
+                        "name": "id",
+                        "in": "path",
+                        "required": true,
+                        "schema": {
+                            "type": "integer"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Salary blocked"
+                    }
+                },
+                "security": [
+                    {
+                        "bearerAuth": []
+                    }
+                ]
+            }
+        },
+        "/alerts/{id}/dispatch": {
+            "post": {
+                "tags": [
+                    "Ghost Worker Alerts"
+                ],
+                "summary": "Dispatch nearest field agent to investigate",
+                "operationId": "alertDispatch",
+                "parameters": [
+                    {
+                        "name": "id",
+                        "in": "path",
+                        "required": true,
+                        "schema": {
+                            "type": "integer"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Agent dispatched"
+                    },
+                    "422": {
+                        "description": "No available agent"
+                    }
+                },
+                "security": [
+                    {
+                        "bearerAuth": []
+                    }
+                ]
+            }
+        },
+        "/alerts/{id}/refer-icpc": {
+            "post": {
+                "tags": [
+                    "Ghost Worker Alerts"
+                ],
+                "summary": "Refer an alert to the ICPC",
+                "operationId": "alertReferIcpc",
+                "parameters": [
+                    {
+                        "name": "id",
+                        "in": "path",
+                        "required": true,
+                        "schema": {
+                            "type": "integer"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Alert referred to ICPC"
+                    }
+                },
+                "security": [
+                    {
+                        "bearerAuth": []
+                    }
+                ]
+            }
+        },
+        "/alerts/{id}/false-positive": {
+            "post": {
+                "tags": [
+                    "Ghost Worker Alerts"
+                ],
+                "summary": "Mark an alert as a false positive",
+                "operationId": "alertFalsePositive",
+                "parameters": [
+                    {
+                        "name": "id",
+                        "in": "path",
+                        "required": true,
+                        "schema": {
+                            "type": "integer"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Alert marked as false positive"
+                    }
+                },
+                "security": [
+                    {
+                        "bearerAuth": []
+                    }
+                ]
+            }
+        },
+        "/alerts/{id}/resolve": {
+            "post": {
+                "tags": [
+                    "Ghost Worker Alerts"
+                ],
+                "summary": "Resolve a ghost worker alert",
+                "operationId": "alertResolve",
+                "parameters": [
+                    {
+                        "name": "id",
+                        "in": "path",
+                        "required": true,
+                        "schema": {
+                            "type": "integer"
+                        }
+                    }
+                ],
+                "requestBody": {
+                    "content": {
+                        "application/json": {
+                            "schema": {
+                                "properties": {
+                                    "notes": {
+                                        "type": "string",
+                                        "example": "Worker physically verified at duty post"
+                                    }
+                                },
+                                "type": "object"
+                            }
+                        }
+                    }
+                },
+                "responses": {
+                    "200": {
+                        "description": "Alert resolved"
+                    }
+                },
+                "security": [
+                    {
+                        "bearerAuth": []
+                    }
+                ]
+            }
+        },
+        "/mdas": {
+            "get": {
+                "tags": [
+                    "MDAs"
+                ],
+                "summary": "List all MDAs (paginated)",
+                "operationId": "mdaIndex",
+                "responses": {
+                    "200": {
+                        "description": "Paginated MDA list"
+                    }
+                },
+                "security": [
+                    {
+                        "bearerAuth": []
+                    }
+                ]
+            },
+            "post": {
+                "tags": [
+                    "MDAs"
+                ],
+                "summary": "Create a new MDA",
+                "operationId": "mdaStore",
+                "requestBody": {
+                    "required": true,
+                    "content": {
+                        "application/json": {
+                            "schema": {
+                                "required": [
+                                    "name",
+                                    "code",
+                                    "state",
+                                    "ministry_type",
+                                    "contact_email",
+                                    "head_name"
+                                ],
+                                "properties": {
+                                    "name": {
+                                        "type": "string",
+                                        "example": "Federal Ministry of Finance"
+                                    },
+                                    "code": {
+                                        "type": "string",
+                                        "example": "FMF"
+                                    },
+                                    "state": {
+                                        "type": "string",
+                                        "example": "Abuja"
+                                    },
+                                    "ministry_type": {
+                                        "type": "string",
+                                        "enum": [
+                                            "federal",
+                                            "state"
+                                        ]
+                                    },
+                                    "contact_email": {
+                                        "type": "string",
+                                        "example": "hr@fmf.gov.ng"
+                                    },
+                                    "head_name": {
+                                        "type": "string",
+                                        "example": "Dr. Ngozi Okonjo-Iweala"
+                                    }
+                                },
+                                "type": "object"
+                            }
+                        }
+                    }
+                },
+                "responses": {
+                    "201": {
+                        "description": "MDA created"
+                    },
+                    "422": {
+                        "description": "Validation error"
+                    }
+                },
+                "security": [
+                    {
+                        "bearerAuth": []
+                    }
+                ]
+            }
+        },
+        "/mdas/{id}": {
+            "get": {
+                "tags": [
+                    "MDAs"
+                ],
+                "summary": "Get a single MDA",
+                "operationId": "mdaShow",
+                "parameters": [
+                    {
+                        "name": "id",
+                        "in": "path",
+                        "required": true,
+                        "schema": {
+                            "type": "integer"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "MDA detail"
+                    },
+                    "404": {
+                        "description": "Not found"
+                    }
+                },
+                "security": [
+                    {
+                        "bearerAuth": []
+                    }
+                ]
+            },
+            "put": {
+                "tags": [
+                    "MDAs"
+                ],
+                "summary": "Update an MDA",
+                "operationId": "mdaUpdate",
+                "parameters": [
+                    {
+                        "name": "id",
+                        "in": "path",
+                        "required": true,
+                        "schema": {
+                            "type": "integer"
+                        }
+                    }
+                ],
+                "requestBody": {
+                    "content": {
+                        "application/json": {
+                            "schema": {
+                                "properties": {
+                                    "name": {
+                                        "type": "string"
+                                    },
+                                    "state": {
+                                        "type": "string"
+                                    },
+                                    "ministry_type": {
+                                        "type": "string",
+                                        "enum": [
+                                            "federal",
+                                            "state"
+                                        ]
+                                    },
+                                    "contact_email": {
+                                        "type": "string"
+                                    },
+                                    "head_name": {
+                                        "type": "string"
+                                    },
+                                    "risk_score": {
+                                        "type": "number"
+                                    }
+                                },
+                                "type": "object"
+                            }
+                        }
+                    }
+                },
+                "responses": {
+                    "200": {
+                        "description": "MDA updated"
+                    },
+                    "404": {
+                        "description": "Not found"
+                    }
+                },
+                "security": [
+                    {
+                        "bearerAuth": []
+                    }
+                ]
+            },
+            "delete": {
+                "tags": [
+                    "MDAs"
+                ],
+                "summary": "Delete an MDA",
+                "operationId": "mdaDestroy",
+                "parameters": [
+                    {
+                        "name": "id",
+                        "in": "path",
+                        "required": true,
+                        "schema": {
+                            "type": "integer"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "MDA deleted"
+                    },
+                    "404": {
+                        "description": "Not found"
+                    }
+                },
+                "security": [
+                    {
+                        "bearerAuth": []
+                    }
+                ]
+            }
+        },
+        "/mdas/{id}/workers": {
+            "get": {
+                "tags": [
+                    "MDAs"
+                ],
+                "summary": "List workers belonging to an MDA",
+                "operationId": "mdaWorkers",
+                "parameters": [
+                    {
+                        "name": "id",
+                        "in": "path",
+                        "required": true,
+                        "schema": {
+                            "type": "integer"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Paginated workers"
+                    }
+                },
+                "security": [
+                    {
+                        "bearerAuth": []
+                    }
+                ]
+            }
+        },
+        "/mdas/{id}/stats": {
+            "get": {
+                "tags": [
+                    "MDAs"
+                ],
+                "summary": "Get statistics for an MDA",
+                "operationId": "mdaStats",
+                "parameters": [
+                    {
+                        "name": "id",
+                        "in": "path",
+                        "required": true,
+                        "schema": {
+                            "type": "integer"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "MDA statistics"
+                    }
+                },
+                "security": [
+                    {
+                        "bearerAuth": []
+                    }
+                ]
+            }
+        },
+        "/onboarding/step1": {
+            "post": {
+                "tags": [
+                    "Worker Onboarding"
+                ],
+                "summary": "Step 1 — Employment details: creates a draft worker record",
+                "operationId": "onboardingStep1",
+                "requestBody": {
+                    "required": true,
+                    "content": {
+                        "application/json": {
+                            "schema": {
+                                "required": [
+                                    "full_name",
+                                    "date_of_birth",
+                                    "gender",
+                                    "ippis_id",
+                                    "mda_id",
+                                    "department_id",
+                                    "job_title",
+                                    "grade_level",
+                                    "step",
+                                    "employment_date",
+                                    "employment_type",
+                                    "state_of_posting",
+                                    "lga",
+                                    "office_address"
+                                ],
+                                "properties": {
+                                    "full_name": {
+                                        "type": "string",
+                                        "example": "Adamu Bello"
+                                    },
+                                    "date_of_birth": {
+                                        "type": "string",
+                                        "format": "date",
+                                        "example": "1985-03-15"
+                                    },
+                                    "gender": {
+                                        "type": "string",
+                                        "enum": [
+                                            "male",
+                                            "female"
+                                        ]
+                                    },
+                                    "ippis_id": {
+                                        "type": "string",
+                                        "example": "IPPIS-001"
+                                    },
+                                    "mda_id": {
+                                        "type": "integer",
+                                        "example": 1
+                                    },
+                                    "department_id": {
+                                        "type": "integer",
+                                        "example": 2
+                                    },
+                                    "job_title": {
+                                        "type": "string",
+                                        "example": "Senior Accountant"
+                                    },
+                                    "grade_level": {
+                                        "type": "integer",
+                                        "example": 10
+                                    },
+                                    "step": {
+                                        "type": "integer",
+                                        "example": 3
+                                    },
+                                    "employment_date": {
+                                        "type": "string",
+                                        "format": "date",
+                                        "example": "2010-06-01"
+                                    },
+                                    "employment_type": {
+                                        "type": "string",
+                                        "enum": [
+                                            "permanent",
+                                            "contract",
+                                            "secondment",
+                                            "casual"
+                                        ]
+                                    },
+                                    "state_of_posting": {
+                                        "type": "string",
+                                        "example": "Lagos"
+                                    },
+                                    "lga": {
+                                        "type": "string",
+                                        "example": "Ikeja"
+                                    },
+                                    "office_address": {
+                                        "type": "string",
+                                        "example": "1 Treasury Road, Lagos"
+                                    }
+                                },
+                                "type": "object"
+                            }
+                        }
+                    }
+                },
+                "responses": {
+                    "201": {
+                        "description": "Draft worker created — returns worker_id and onboarding_token"
+                    },
+                    "422": {
+                        "description": "Validation error"
+                    }
+                },
+                "security": [
+                    {
+                        "bearerAuth": []
+                    }
+                ]
+            }
+        },
+        "/onboarding/{worker_id}/step2": {
+            "put": {
+                "tags": [
+                    "Worker Onboarding"
+                ],
+                "summary": "Step 2 — Personal / identity details",
+                "operationId": "onboardingStep2",
+                "parameters": [
+                    {
+                        "name": "worker_id",
+                        "in": "path",
+                        "required": true,
+                        "schema": {
+                            "type": "integer"
+                        }
+                    }
+                ],
+                "requestBody": {
+                    "required": true,
+                    "content": {
+                        "application/json": {
+                            "schema": {
+                                "required": [
+                                    "nin",
+                                    "bvn",
+                                    "phone",
+                                    "email",
+                                    "home_address",
+                                    "next_of_kin_name",
+                                    "next_of_kin_phone",
+                                    "next_of_kin_relationship"
+                                ],
+                                "properties": {
+                                    "nin": {
+                                        "type": "string",
+                                        "example": "12345678901"
+                                    },
+                                    "bvn": {
+                                        "type": "string",
+                                        "example": "12345678901"
+                                    },
+                                    "phone": {
+                                        "type": "string",
+                                        "example": "08012345678"
+                                    },
+                                    "email": {
+                                        "type": "string",
+                                        "example": "worker@gov.ng"
+                                    },
+                                    "home_address": {
+                                        "type": "string",
+                                        "example": "5 Bode Thomas St, Lagos"
+                                    },
+                                    "next_of_kin_name": {
+                                        "type": "string",
+                                        "example": "Fatima Bello"
+                                    },
+                                    "next_of_kin_phone": {
+                                        "type": "string",
+                                        "example": "08098765432"
+                                    },
+                                    "next_of_kin_relationship": {
+                                        "type": "string",
+                                        "example": "Spouse"
+                                    }
+                                },
+                                "type": "object"
+                            }
+                        }
+                    }
+                },
+                "responses": {
+                    "200": {
+                        "description": "Step 2 completed"
+                    },
+                    "404": {
+                        "description": "Worker not found"
+                    },
+                    "422": {
+                        "description": "Validation error"
+                    }
+                },
+                "security": [
+                    {
+                        "bearerAuth": []
+                    }
+                ]
+            }
+        },
+        "/onboarding/{worker_id}/step3": {
+            "put": {
+                "tags": [
+                    "Worker Onboarding"
+                ],
+                "summary": "Step 3 — Salary and bank account details",
+                "operationId": "onboardingStep3",
+                "parameters": [
+                    {
+                        "name": "worker_id",
+                        "in": "path",
+                        "required": true,
+                        "schema": {
+                            "type": "integer"
+                        }
+                    }
+                ],
+                "requestBody": {
+                    "required": true,
+                    "content": {
+                        "application/json": {
+                            "schema": {
+                                "required": [
+                                    "salary_amount",
+                                    "bank_name",
+                                    "bank_code",
+                                    "bank_account_number",
+                                    "bank_account_name"
+                                ],
+                                "properties": {
+                                    "salary_amount": {
+                                        "type": "number",
+                                        "example": 85000
+                                    },
+                                    "bank_name": {
+                                        "type": "string",
+                                        "example": "First Bank"
+                                    },
+                                    "bank_code": {
+                                        "type": "string",
+                                        "example": "011"
+                                    },
+                                    "bank_account_number": {
+                                        "type": "string",
+                                        "example": "1234567890"
+                                    },
+                                    "bank_account_name": {
+                                        "type": "string",
+                                        "example": "Adamu Bello"
+                                    }
+                                },
+                                "type": "object"
+                            }
+                        }
+                    }
+                },
+                "responses": {
+                    "200": {
+                        "description": "Step 3 completed"
+                    },
+                    "404": {
+                        "description": "Worker not found"
+                    },
+                    "422": {
+                        "description": "Validation error"
+                    }
+                },
+                "security": [
+                    {
+                        "bearerAuth": []
+                    }
+                ]
+            }
+        },
+        "/onboarding/{worker_id}/step4": {
+            "post": {
+                "tags": [
+                    "Worker Onboarding"
+                ],
+                "summary": "Step 4 — Upload face biometric image",
+                "operationId": "onboardingStep4",
+                "parameters": [
+                    {
+                        "name": "worker_id",
+                        "in": "path",
+                        "required": true,
+                        "schema": {
+                            "type": "integer"
+                        }
+                    }
+                ],
+                "requestBody": {
+                    "required": true,
+                    "content": {
+                        "multipart/form-data": {
+                            "schema": {
+                                "required": [
+                                    "face_image"
+                                ],
+                                "properties": {
+                                    "face_image": {
+                                        "description": "Face photo — jpg/jpeg/png, max 5 MB",
+                                        "type": "string",
+                                        "format": "binary"
+                                    }
+                                },
+                                "type": "object"
+                            }
+                        }
+                    }
+                },
+                "responses": {
+                    "200": {
+                        "description": "Face image stored, face_enrolled set to true"
+                    },
+                    "404": {
+                        "description": "Worker not found"
+                    },
+                    "422": {
+                        "description": "Validation error"
+                    }
+                },
+                "security": [
+                    {
+                        "bearerAuth": []
+                    }
+                ]
+            }
+        },
+        "/onboarding/{worker_id}/step5": {
+            "post": {
+                "tags": [
+                    "Worker Onboarding"
+                ],
+                "summary": "Step 5 — Upload voice biometric sample",
+                "operationId": "onboardingStep5",
+                "parameters": [
+                    {
+                        "name": "worker_id",
+                        "in": "path",
+                        "required": true,
+                        "schema": {
+                            "type": "integer"
+                        }
+                    }
+                ],
+                "requestBody": {
+                    "required": true,
+                    "content": {
+                        "multipart/form-data": {
+                            "schema": {
+                                "required": [
+                                    "voice_sample"
+                                ],
+                                "properties": {
+                                    "voice_sample": {
+                                        "description": "Voice recording — wav/mp3/ogg, max 10 MB",
+                                        "type": "string",
+                                        "format": "binary"
+                                    }
+                                },
+                                "type": "object"
+                            }
+                        }
+                    }
+                },
+                "responses": {
+                    "200": {
+                        "description": "Voice sample stored, voice_enrolled set to true"
+                    },
+                    "404": {
+                        "description": "Worker not found"
+                    },
+                    "422": {
+                        "description": "Validation error"
+                    }
+                },
+                "security": [
+                    {
+                        "bearerAuth": []
+                    }
+                ]
+            }
+        },
+        "/onboarding/{worker_id}/step6": {
+            "post": {
+                "tags": [
+                    "Worker Onboarding"
+                ],
+                "summary": "Step 6 — Create Squad virtual account for the worker",
+                "operationId": "onboardingStep6",
+                "parameters": [
+                    {
+                        "name": "worker_id",
+                        "in": "path",
+                        "required": true,
+                        "schema": {
+                            "type": "integer"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Virtual account created and saved"
+                    },
+                    "404": {
+                        "description": "Worker not found"
+                    },
+                    "422": {
+                        "description": "Squad API error"
+                    }
+                },
+                "security": [
+                    {
+                        "bearerAuth": []
+                    }
+                ]
+            }
+        },
+        "/onboarding/{worker_id}/complete": {
+            "post": {
+                "tags": [
+                    "Worker Onboarding"
+                ],
+                "summary": "Complete onboarding — activates the worker record",
+                "operationId": "onboardingComplete",
+                "parameters": [
+                    {
+                        "name": "worker_id",
+                        "in": "path",
+                        "required": true,
+                        "schema": {
+                            "type": "integer"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Worker successfully enrolled"
+                    },
+                    "404": {
+                        "description": "Worker not found"
+                    },
+                    "422": {
+                        "description": "Onboarding steps not fully completed"
+                    }
+                },
+                "security": [
+                    {
+                        "bearerAuth": []
+                    }
+                ]
+            }
+        },
+        "/onboarding/{worker_id}/status": {
+            "get": {
+                "tags": [
+                    "Worker Onboarding"
+                ],
+                "summary": "Get current onboarding status and completed steps",
+                "operationId": "onboardingStatus",
+                "parameters": [
+                    {
+                        "name": "worker_id",
+                        "in": "path",
+                        "required": true,
+                        "schema": {
+                            "type": "integer"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Onboarding status with step completion flags"
+                    },
+                    "404": {
+                        "description": "Worker not found"
+                    }
+                },
+                "security": [
+                    {
+                        "bearerAuth": []
+                    }
+                ]
+            }
+        },
+        "/onboarding/resume/{token}": {
+            "get": {
+                "tags": [
+                    "Worker Onboarding"
+                ],
+                "summary": "Resume onboarding by token (public — no auth required)",
+                "operationId": "onboardingResume",
+                "parameters": [
+                    {
+                        "name": "token",
+                        "in": "path",
+                        "required": true,
+                        "schema": {
+                            "type": "string",
+                            "format": "uuid"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Worker data and current onboarding status"
+                    },
+                    "404": {
+                        "description": "Token not found"
+                    }
+                }
+            }
+        },
+        "/payments": {
+            "get": {
+                "tags": [
+                    "Payments"
+                ],
+                "summary": "List payments",
+                "operationId": "paymentIndex",
+                "parameters": [
+                    {
+                        "name": "status",
+                        "in": "query",
+                        "required": false,
+                        "schema": {
+                            "type": "string",
+                            "enum": [
+                                "pending",
+                                "released",
+                                "blocked",
+                                "failed"
+                            ]
+                        }
+                    },
+                    {
+                        "name": "cycle_id",
+                        "in": "query",
+                        "required": false,
+                        "schema": {
+                            "type": "integer"
+                        }
+                    },
+                    {
+                        "name": "mda_id",
+                        "in": "query",
+                        "required": false,
+                        "schema": {
+                            "type": "integer"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Paginated payments"
+                    }
+                },
+                "security": [
+                    {
+                        "bearerAuth": []
+                    }
+                ]
+            }
+        },
+        "/payments/{id}": {
+            "get": {
+                "tags": [
+                    "Payments"
+                ],
+                "summary": "Get a single payment record",
+                "operationId": "paymentShow",
+                "parameters": [
+                    {
+                        "name": "id",
+                        "in": "path",
+                        "required": true,
+                        "schema": {
+                            "type": "integer"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Payment detail"
+                    },
+                    "404": {
+                        "description": "Not found"
+                    }
+                },
+                "security": [
+                    {
+                        "bearerAuth": []
+                    }
+                ]
+            }
+        },
+        "/payments/release": {
+            "post": {
+                "tags": [
+                    "Payments"
+                ],
+                "summary": "Bulk-release payments for all PASS verifications in a cycle",
+                "operationId": "paymentRelease",
+                "requestBody": {
+                    "required": true,
+                    "content": {
+                        "application/json": {
+                            "schema": {
+                                "required": [
+                                    "cycle_id"
+                                ],
+                                "properties": {
+                                    "cycle_id": {
+                                        "type": "integer",
+                                        "example": 1
+                                    }
+                                },
+                                "type": "object"
+                            }
+                        }
+                    }
+                },
+                "responses": {
+                    "202": {
+                        "description": "Disbursement jobs queued"
+                    },
+                    "422": {
+                        "description": "Validation error"
+                    }
+                },
+                "security": [
+                    {
+                        "bearerAuth": []
+                    }
+                ]
+            }
+        },
+        "/payments/block/{worker_id}": {
+            "post": {
+                "tags": [
+                    "Payments"
+                ],
+                "summary": "Block all pending payments for a worker",
+                "operationId": "paymentBlockWorker",
+                "parameters": [
+                    {
+                        "name": "worker_id",
+                        "in": "path",
+                        "required": true,
+                        "schema": {
+                            "type": "integer"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Worker payments blocked"
+                    },
+                    "404": {
+                        "description": "Worker not found"
+                    }
+                },
+                "security": [
+                    {
+                        "bearerAuth": []
+                    }
+                ]
+            }
+        },
+        "/reports/ghost-savings": {
+            "get": {
+                "tags": [
+                    "Reports"
+                ],
+                "summary": "Year-to-date ghost worker salary savings",
+                "operationId": "reportGhostSavings",
+                "responses": {
+                    "200": {
+                        "description": "YTD blocked amounts with monthly breakdown"
+                    }
+                },
+                "security": [
+                    {
+                        "bearerAuth": []
+                    }
+                ]
+            }
+        },
+        "/reports/verification-rates": {
+            "get": {
+                "tags": [
+                    "Reports"
+                ],
+                "summary": "Verification pass rates by MDA and month",
+                "operationId": "reportVerificationRates",
+                "responses": {
+                    "200": {
+                        "description": "Pass rates by MDA and monthly trend"
+                    }
+                },
+                "security": [
+                    {
+                        "bearerAuth": []
+                    }
+                ]
+            }
+        },
+        "/reports/cycle-summary/{cycle_id}": {
+            "get": {
+                "tags": [
+                    "Reports"
+                ],
+                "summary": "Full summary report for a verification cycle",
+                "operationId": "reportCycleSummary",
+                "parameters": [
+                    {
+                        "name": "cycle_id",
+                        "in": "path",
+                        "required": true,
+                        "schema": {
+                            "type": "integer"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Cycle summary with settlements"
+                    }
+                },
+                "security": [
+                    {
+                        "bearerAuth": []
+                    }
+                ]
+            }
+        },
+        "/reports/at-risk-mdas": {
+            "get": {
+                "tags": [
+                    "Reports"
+                ],
+                "summary": "Top 10 MDAs ranked by ghost worker risk score",
+                "operationId": "reportAtRiskMdas",
+                "responses": {
+                    "200": {
+                        "description": "Top 10 at-risk MDAs"
+                    }
+                },
+                "security": [
+                    {
+                        "bearerAuth": []
+                    }
+                ]
+            }
+        },
+        "/reports/ai-layer-performance": {
+            "get": {
+                "tags": [
+                    "Reports"
+                ],
+                "summary": "Average scores per AI verification layer",
+                "operationId": "reportAiLayerPerformance",
+                "responses": {
+                    "200": {
+                        "description": "Average scores across all 5 AI layers"
+                    }
+                },
+                "security": [
+                    {
+                        "bearerAuth": []
+                    }
+                ]
+            }
+        },
+        "/settings": {
+            "get": {
+                "tags": [
+                    "Settings"
+                ],
+                "summary": "Get all system settings",
+                "operationId": "settingsIndex",
+                "responses": {
+                    "200": {
+                        "description": "Key-value map of all settings"
+                    }
+                },
+                "security": [
+                    {
+                        "bearerAuth": []
+                    }
+                ]
+            },
+            "put": {
+                "tags": [
+                    "Settings"
+                ],
+                "summary": "Update one or more system settings",
+                "operationId": "settingsUpdate",
+                "requestBody": {
+                    "required": true,
+                    "content": {
+                        "application/json": {
+                            "schema": {
+                                "required": [
+                                    "settings"
+                                ],
+                                "properties": {
+                                    "settings": {
+                                        "type": "object",
+                                        "example": {
+                                            "trust_score_threshold": 70,
+                                            "auto_block_on_fail": true
+                                        }
+                                    }
+                                },
+                                "type": "object"
+                            }
+                        }
+                    }
+                },
+                "responses": {
+                    "200": {
+                        "description": "Settings updated"
+                    }
+                },
+                "security": [
+                    {
+                        "bearerAuth": []
+                    }
+                ]
+            }
+        },
+        "/settlements": {
+            "get": {
+                "tags": [
+                    "Settlements"
+                ],
+                "summary": "List all settlements",
+                "operationId": "settlementIndex",
+                "responses": {
+                    "200": {
+                        "description": "Paginated settlements"
+                    }
+                },
+                "security": [
+                    {
+                        "bearerAuth": []
+                    }
+                ]
+            }
+        },
+        "/settlements/{id}": {
+            "get": {
+                "tags": [
+                    "Settlements"
+                ],
+                "summary": "Get a single settlement",
+                "operationId": "settlementShow",
+                "parameters": [
+                    {
+                        "name": "id",
+                        "in": "path",
+                        "required": true,
+                        "schema": {
+                            "type": "integer"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Settlement detail"
+                    },
+                    "404": {
+                        "description": "Not found"
+                    }
+                },
+                "security": [
+                    {
+                        "bearerAuth": []
+                    }
+                ]
+            }
+        },
+        "/settlements/{cycle_id}/initiate": {
+            "post": {
+                "tags": [
+                    "Settlements"
+                ],
+                "summary": "Initiate settlements for all MDAs in a cycle",
+                "operationId": "settlementInitiate",
+                "parameters": [
+                    {
+                        "name": "cycle_id",
+                        "in": "path",
+                        "required": true,
+                        "schema": {
+                            "type": "integer"
+                        }
+                    }
+                ],
+                "responses": {
+                    "201": {
+                        "description": "Settlements created per MDA"
+                    },
+                    "404": {
+                        "description": "Cycle not found"
+                    }
+                },
+                "security": [
+                    {
+                        "bearerAuth": []
+                    }
+                ]
+            }
+        },
+        "/users": {
+            "get": {
+                "tags": [
+                    "Users"
+                ],
+                "summary": "List all users",
+                "operationId": "userIndex",
+                "responses": {
+                    "200": {
+                        "description": "Paginated user list"
+                    }
+                },
+                "security": [
+                    {
+                        "bearerAuth": []
+                    }
+                ]
+            },
+            "post": {
+                "tags": [
+                    "Users"
+                ],
+                "summary": "Create a new user",
+                "operationId": "userStore",
+                "requestBody": {
+                    "required": true,
+                    "content": {
+                        "application/json": {
+                            "schema": {
+                                "required": [
+                                    "name",
+                                    "email",
+                                    "password",
+                                    "role"
+                                ],
+                                "properties": {
+                                    "name": {
+                                        "type": "string",
+                                        "example": "Fatima Aliyu"
+                                    },
+                                    "email": {
+                                        "type": "string",
+                                        "example": "fatima@ippis.gov.ng"
+                                    },
+                                    "password": {
+                                        "type": "string",
+                                        "example": "secret123"
+                                    },
+                                    "role": {
+                                        "type": "string",
+                                        "enum": [
+                                            "super_admin",
+                                            "mda_admin",
+                                            "field_agent",
+                                            "payroll_officer"
+                                        ]
+                                    },
+                                    "mda_id": {
+                                        "type": "integer",
+                                        "example": 2
+                                    },
+                                    "phone": {
+                                        "type": "string",
+                                        "example": "08012345678"
+                                    }
+                                },
+                                "type": "object"
+                            }
+                        }
+                    }
+                },
+                "responses": {
+                    "201": {
+                        "description": "User created"
+                    },
+                    "422": {
+                        "description": "Validation error"
+                    }
+                },
+                "security": [
+                    {
+                        "bearerAuth": []
+                    }
+                ]
+            }
+        },
+        "/users/{id}": {
+            "get": {
+                "tags": [
+                    "Users"
+                ],
+                "summary": "Get a single user",
+                "operationId": "userShow",
+                "parameters": [
+                    {
+                        "name": "id",
+                        "in": "path",
+                        "required": true,
+                        "schema": {
+                            "type": "integer"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "User detail"
+                    },
+                    "404": {
+                        "description": "Not found"
+                    }
+                },
+                "security": [
+                    {
+                        "bearerAuth": []
+                    }
+                ]
+            },
+            "put": {
+                "tags": [
+                    "Users"
+                ],
+                "summary": "Update a user",
+                "operationId": "userUpdate",
+                "parameters": [
+                    {
+                        "name": "id",
+                        "in": "path",
+                        "required": true,
+                        "schema": {
+                            "type": "integer"
+                        }
+                    }
+                ],
+                "requestBody": {
+                    "content": {
+                        "application/json": {
+                            "schema": {
+                                "properties": {
+                                    "name": {
+                                        "type": "string"
+                                    },
+                                    "email": {
+                                        "type": "string"
+                                    },
+                                    "password": {
+                                        "type": "string"
+                                    },
+                                    "role": {
+                                        "type": "string",
+                                        "enum": [
+                                            "super_admin",
+                                            "mda_admin",
+                                            "field_agent",
+                                            "payroll_officer"
+                                        ]
+                                    },
+                                    "mda_id": {
+                                        "type": "integer"
+                                    },
+                                    "phone": {
+                                        "type": "string"
+                                    }
+                                },
+                                "type": "object"
+                            }
+                        }
+                    }
+                },
+                "responses": {
+                    "200": {
+                        "description": "User updated"
+                    },
+                    "404": {
+                        "description": "Not found"
+                    }
+                },
+                "security": [
+                    {
+                        "bearerAuth": []
+                    }
+                ]
+            },
+            "delete": {
+                "tags": [
+                    "Users"
+                ],
+                "summary": "Delete a user",
+                "operationId": "userDestroy",
+                "parameters": [
+                    {
+                        "name": "id",
+                        "in": "path",
+                        "required": true,
+                        "schema": {
+                            "type": "integer"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "User deleted"
+                    },
+                    "404": {
+                        "description": "Not found"
+                    }
+                },
+                "security": [
+                    {
+                        "bearerAuth": []
+                    }
+                ]
+            }
+        },
+        "/verifications": {
+            "get": {
+                "tags": [
+                    "Verifications"
+                ],
+                "summary": "List verifications",
+                "operationId": "verificationIndex",
+                "parameters": [
+                    {
+                        "name": "cycle_id",
+                        "in": "query",
+                        "required": false,
+                        "schema": {
+                            "type": "integer"
+                        }
+                    },
+                    {
+                        "name": "worker_id",
+                        "in": "query",
+                        "required": false,
+                        "schema": {
+                            "type": "integer"
+                        }
+                    },
+                    {
+                        "name": "verdict",
+                        "in": "query",
+                        "required": false,
+                        "schema": {
+                            "type": "string",
+                            "enum": [
+                                "PASS",
+                                "FAIL",
+                                "INCONCLUSIVE"
+                            ]
+                        }
+                    },
+                    {
+                        "name": "channel",
+                        "in": "query",
+                        "required": false,
+                        "schema": {
+                            "type": "string",
+                            "enum": [
+                                "ivr",
+                                "app",
+                                "agent"
+                            ]
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Paginated verifications"
+                    }
+                },
+                "security": [
+                    {
+                        "bearerAuth": []
+                    }
+                ]
+            },
+            "post": {
+                "tags": [
+                    "Verifications"
+                ],
+                "summary": "Submit a new verification result",
+                "operationId": "verificationStore",
+                "requestBody": {
+                    "required": true,
+                    "content": {
+                        "application/json": {
+                            "schema": {
+                                "required": [
+                                    "worker_id",
+                                    "cycle_id",
+                                    "channel",
+                                    "challenge_response_score",
+                                    "speaker_biometric_score",
+                                    "anti_spoof_score",
+                                    "replay_detection_score",
+                                    "face_liveness_score"
+                                ],
+                                "properties": {
+                                    "worker_id": {
+                                        "type": "integer",
+                                        "example": 1
+                                    },
+                                    "cycle_id": {
+                                        "type": "integer",
+                                        "example": 1
+                                    },
+                                    "channel": {
+                                        "type": "string",
+                                        "enum": [
+                                            "ivr",
+                                            "app",
+                                            "agent"
+                                        ]
+                                    },
+                                    "challenge_response_score": {
+                                        "type": "integer",
+                                        "example": 85,
+                                        "maximum": 100,
+                                        "minimum": 0
+                                    },
+                                    "speaker_biometric_score": {
+                                        "type": "integer",
+                                        "example": 90,
+                                        "maximum": 100,
+                                        "minimum": 0
+                                    },
+                                    "anti_spoof_score": {
+                                        "type": "integer",
+                                        "example": 88,
+                                        "maximum": 100,
+                                        "minimum": 0
+                                    },
+                                    "replay_detection_score": {
+                                        "type": "integer",
+                                        "example": 92,
+                                        "maximum": 100,
+                                        "minimum": 0
+                                    },
+                                    "face_liveness_score": {
+                                        "type": "integer",
+                                        "example": 80,
+                                        "maximum": 100,
+                                        "minimum": 0
+                                    },
+                                    "latency_ms": {
+                                        "type": "integer",
+                                        "example": 340
+                                    },
+                                    "language": {
+                                        "type": "string",
+                                        "enum": [
+                                            "yoruba",
+                                            "hausa",
+                                            "igbo",
+                                            "pidgin",
+                                            "english"
+                                        ]
+                                    }
+                                },
+                                "type": "object"
+                            }
+                        }
+                    }
+                },
+                "responses": {
+                    "201": {
+                        "description": "Verification recorded, trust score computed"
+                    },
+                    "422": {
+                        "description": "Validation error"
+                    }
+                },
+                "security": [
+                    {
+                        "bearerAuth": []
+                    }
+                ]
+            }
+        },
+        "/verifications/{id}": {
+            "get": {
+                "tags": [
+                    "Verifications"
+                ],
+                "summary": "Get a single verification",
+                "operationId": "verificationShow",
+                "parameters": [
+                    {
+                        "name": "id",
+                        "in": "path",
+                        "required": true,
+                        "schema": {
+                            "type": "integer"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Verification detail"
+                    },
+                    "404": {
+                        "description": "Not found"
+                    }
+                },
+                "security": [
+                    {
+                        "bearerAuth": []
+                    }
+                ]
+            }
+        },
+        "/verifications/{id}/override": {
+            "post": {
+                "tags": [
+                    "Verifications"
+                ],
+                "summary": "Manually override a verification verdict",
+                "operationId": "verificationOverride",
+                "parameters": [
+                    {
+                        "name": "id",
+                        "in": "path",
+                        "required": true,
+                        "schema": {
+                            "type": "integer"
+                        }
+                    }
+                ],
+                "requestBody": {
+                    "required": true,
+                    "content": {
+                        "application/json": {
+                            "schema": {
+                                "required": [
+                                    "verdict",
+                                    "reason"
+                                ],
+                                "properties": {
+                                    "verdict": {
+                                        "type": "string",
+                                        "enum": [
+                                            "PASS",
+                                            "FAIL",
+                                            "INCONCLUSIVE"
+                                        ]
+                                    },
+                                    "reason": {
+                                        "type": "string",
+                                        "example": "Corrected after biometric re-test"
+                                    }
+                                },
+                                "type": "object"
+                            }
+                        }
+                    }
+                },
+                "responses": {
+                    "200": {
+                        "description": "Verdict overridden"
+                    },
+                    "404": {
+                        "description": "Not found"
+                    }
+                },
+                "security": [
+                    {
+                        "bearerAuth": []
+                    }
+                ]
+            }
+        },
+        "/cycles": {
+            "get": {
+                "tags": [
+                    "Verification Cycles"
+                ],
+                "summary": "List all verification cycles",
+                "operationId": "cycleIndex",
+                "responses": {
+                    "200": {
+                        "description": "Paginated cycles"
+                    }
+                },
+                "security": [
+                    {
+                        "bearerAuth": []
+                    }
+                ]
+            },
+            "post": {
+                "tags": [
+                    "Verification Cycles"
+                ],
+                "summary": "Create a new verification cycle",
+                "operationId": "cycleStore",
+                "requestBody": {
+                    "required": true,
+                    "content": {
+                        "application/json": {
+                            "schema": {
+                                "required": [
+                                    "name",
+                                    "cycle_month"
+                                ],
+                                "properties": {
+                                    "name": {
+                                        "type": "string",
+                                        "example": "May 2026 Verification"
+                                    },
+                                    "cycle_month": {
+                                        "type": "string",
+                                        "format": "date",
+                                        "example": "2026-05-01"
+                                    },
+                                    "federation": {
+                                        "type": "string",
+                                        "example": "Federal"
+                                    }
+                                },
+                                "type": "object"
+                            }
+                        }
+                    }
+                },
+                "responses": {
+                    "201": {
+                        "description": "Cycle created"
+                    },
+                    "422": {
+                        "description": "Validation error"
+                    }
+                },
+                "security": [
+                    {
+                        "bearerAuth": []
+                    }
+                ]
+            }
+        },
+        "/cycles/{id}": {
+            "get": {
+                "tags": [
+                    "Verification Cycles"
+                ],
+                "summary": "Get a single verification cycle",
+                "operationId": "cycleShow",
+                "parameters": [
+                    {
+                        "name": "id",
+                        "in": "path",
+                        "required": true,
+                        "schema": {
+                            "type": "integer"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Cycle detail"
+                    },
+                    "404": {
+                        "description": "Not found"
+                    }
+                },
+                "security": [
+                    {
+                        "bearerAuth": []
+                    }
+                ]
+            }
+        },
+        "/cycles/{id}/run": {
+            "post": {
+                "tags": [
+                    "Verification Cycles"
+                ],
+                "summary": "Dispatch a verification cycle job",
+                "operationId": "cycleRun",
+                "parameters": [
+                    {
+                        "name": "id",
+                        "in": "path",
+                        "required": true,
+                        "schema": {
+                            "type": "integer"
+                        }
+                    }
+                ],
+                "responses": {
+                    "202": {
+                        "description": "Cycle queued"
+                    },
+                    "409": {
+                        "description": "Cycle already running"
+                    }
+                },
+                "security": [
+                    {
+                        "bearerAuth": []
+                    }
+                ]
+            }
+        },
+        "/cycles/{id}/results": {
+            "get": {
+                "tags": [
+                    "Verification Cycles"
+                ],
+                "summary": "Get verification results for a cycle",
+                "operationId": "cycleResults",
+                "parameters": [
+                    {
+                        "name": "id",
+                        "in": "path",
+                        "required": true,
+                        "schema": {
+                            "type": "integer"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Paginated verification results"
+                    }
+                },
+                "security": [
+                    {
+                        "bearerAuth": []
+                    }
+                ]
+            }
+        },
+        "/cycles/{id}/summary": {
+            "get": {
+                "tags": [
+                    "Verification Cycles"
+                ],
+                "summary": "Get aggregate summary for a cycle",
+                "operationId": "cycleSummary",
+                "parameters": [
+                    {
+                        "name": "id",
+                        "in": "path",
+                        "required": true,
+                        "schema": {
+                            "type": "integer"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Cycle summary with pass-rate and payroll totals"
+                    }
+                },
+                "security": [
+                    {
+                        "bearerAuth": []
+                    }
+                ]
+            }
+        },
+        "/virtual-accounts": {
+            "get": {
+                "tags": [
+                    "Virtual Accounts"
+                ],
+                "summary": "List all virtual accounts",
+                "operationId": "virtualAccountIndex",
+                "responses": {
+                    "200": {
+                        "description": "Paginated virtual accounts"
+                    }
+                },
+                "security": [
+                    {
+                        "bearerAuth": []
+                    }
+                ]
+            },
+            "post": {
+                "tags": [
+                    "Virtual Accounts"
+                ],
+                "summary": "Create a Squad virtual account for a worker",
+                "operationId": "virtualAccountStore",
+                "requestBody": {
+                    "required": true,
+                    "content": {
+                        "application/json": {
+                            "schema": {
+                                "required": [
+                                    "worker_id"
+                                ],
+                                "properties": {
+                                    "worker_id": {
+                                        "type": "integer",
+                                        "example": 1
+                                    }
+                                },
+                                "type": "object"
+                            }
+                        }
+                    }
+                },
+                "responses": {
+                    "201": {
+                        "description": "Virtual account created via Squad API"
+                    },
+                    "422": {
+                        "description": "Squad API error or validation failure"
+                    }
+                },
+                "security": [
+                    {
+                        "bearerAuth": []
+                    }
+                ]
+            }
+        },
+        "/virtual-accounts/{id}": {
+            "get": {
+                "tags": [
+                    "Virtual Accounts"
+                ],
+                "summary": "Get a single virtual account",
+                "operationId": "virtualAccountShow",
+                "parameters": [
+                    {
+                        "name": "id",
+                        "in": "path",
+                        "required": true,
+                        "schema": {
+                            "type": "integer"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Virtual account detail"
+                    },
+                    "404": {
+                        "description": "Not found"
+                    }
+                },
+                "security": [
+                    {
+                        "bearerAuth": []
+                    }
+                ]
+            },
+            "delete": {
+                "tags": [
+                    "Virtual Accounts"
+                ],
+                "summary": "Deactivate a virtual account",
+                "operationId": "virtualAccountDestroy",
+                "parameters": [
+                    {
+                        "name": "id",
+                        "in": "path",
+                        "required": true,
+                        "schema": {
+                            "type": "integer"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Virtual account deactivated"
+                    },
+                    "404": {
+                        "description": "Not found"
+                    }
+                },
+                "security": [
+                    {
+                        "bearerAuth": []
+                    }
+                ]
+            }
+        },
+        "/webhooks/squad": {
+            "post": {
+                "tags": [
+                    "Webhooks"
+                ],
+                "summary": "Receive Squad payment webhook events",
+                "description": "HMAC-validated endpoint. Squad sends `transaction.successful`, `transaction.failed`, and `transaction.reversed` events.",
+                "operationId": "squadWebhook",
+                "parameters": [
+                    {
+                        "name": "x-squad-signature",
+                        "in": "header",
+                        "description": "HMAC-SHA512 signature from Squad",
+                        "required": true,
+                        "schema": {
+                            "type": "string"
+                        }
+                    }
+                ],
+                "requestBody": {
+                    "required": true,
+                    "content": {
+                        "application/json": {
+                            "schema": {
+                                "properties": {
+                                    "Event": {
+                                        "type": "string",
+                                        "example": "transaction.successful"
+                                    },
+                                    "data": {
+                                        "properties": {
+                                            "transaction_reference": {
+                                                "type": "string",
+                                                "example": "SQUAD-TXN-12345"
+                                            }
+                                        },
+                                        "type": "object"
+                                    }
+                                },
+                                "type": "object"
+                            }
+                        }
+                    }
+                },
+                "responses": {
+                    "200": {
+                        "description": "Webhook received"
+                    },
+                    "401": {
+                        "description": "Invalid signature"
+                    }
+                }
+            }
+        },
+        "/workers": {
+            "get": {
+                "tags": [
+                    "Workers"
+                ],
+                "summary": "List all workers (paginated)",
+                "operationId": "workerIndex",
+                "parameters": [
+                    {
+                        "name": "status",
+                        "in": "query",
+                        "required": false,
+                        "schema": {
+                            "type": "string",
+                            "enum": [
+                                "active",
+                                "flagged",
+                                "blocked",
+                                "suspended"
+                            ]
+                        }
+                    },
+                    {
+                        "name": "mda_id",
+                        "in": "query",
+                        "required": false,
+                        "schema": {
+                            "type": "integer"
+                        }
+                    },
+                    {
+                        "name": "state",
+                        "in": "query",
+                        "required": false,
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    {
+                        "name": "search",
+                        "in": "query",
+                        "required": false,
+                        "schema": {
+                            "type": "string"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Paginated list of workers"
+                    }
+                },
+                "security": [
+                    {
+                        "bearerAuth": []
+                    }
+                ]
+            },
+            "post": {
+                "tags": [
+                    "Workers"
+                ],
+                "summary": "Create a new worker",
+                "operationId": "workerStore",
+                "requestBody": {
+                    "required": true,
+                    "content": {
+                        "application/json": {
+                            "schema": {
+                                "required": [
+                                    "ippis_id",
+                                    "full_name",
+                                    "mda_id",
+                                    "salary_amount"
+                                ],
+                                "properties": {
+                                    "ippis_id": {
+                                        "type": "string",
+                                        "example": "IPPIS-001"
+                                    },
+                                    "full_name": {
+                                        "type": "string",
+                                        "example": "Adamu Bello"
+                                    },
+                                    "nin": {
+                                        "type": "string",
+                                        "example": "12345678901"
+                                    },
+                                    "bvn": {
+                                        "type": "string",
+                                        "example": "12345678901"
+                                    },
+                                    "phone": {
+                                        "type": "string",
+                                        "example": "08012345678"
+                                    },
+                                    "email": {
+                                        "type": "string",
+                                        "example": "worker@gov.ng"
+                                    },
+                                    "mda_id": {
+                                        "type": "integer",
+                                        "example": 1
+                                    },
+                                    "department_id": {
+                                        "type": "integer",
+                                        "example": 2
+                                    },
+                                    "grade_level": {
+                                        "type": "string",
+                                        "example": "GL-07"
+                                    },
+                                    "step": {
+                                        "type": "string",
+                                        "example": "5"
+                                    },
+                                    "state_of_posting": {
+                                        "type": "string",
+                                        "example": "Lagos"
+                                    },
+                                    "salary_amount": {
+                                        "type": "number",
+                                        "example": 85000
+                                    },
+                                    "bank_name": {
+                                        "type": "string",
+                                        "example": "First Bank"
+                                    },
+                                    "bank_account_number": {
+                                        "type": "string",
+                                        "example": "1234567890"
+                                    }
+                                },
+                                "type": "object"
+                            }
+                        }
+                    }
+                },
+                "responses": {
+                    "201": {
+                        "description": "Worker created"
+                    },
+                    "422": {
+                        "description": "Validation error"
+                    }
+                },
+                "security": [
+                    {
+                        "bearerAuth": []
+                    }
+                ]
+            }
+        },
+        "/workers/{id}": {
+            "get": {
+                "tags": [
+                    "Workers"
+                ],
+                "summary": "Get a single worker",
+                "operationId": "workerShow",
+                "parameters": [
+                    {
+                        "name": "id",
+                        "in": "path",
+                        "required": true,
+                        "schema": {
+                            "type": "integer"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Worker detail"
+                    },
+                    "404": {
+                        "description": "Not found"
+                    }
+                },
+                "security": [
+                    {
+                        "bearerAuth": []
+                    }
+                ]
+            },
+            "put": {
+                "tags": [
+                    "Workers"
+                ],
+                "summary": "Update a worker",
+                "operationId": "workerUpdate",
+                "parameters": [
+                    {
+                        "name": "id",
+                        "in": "path",
+                        "required": true,
+                        "schema": {
+                            "type": "integer"
+                        }
+                    }
+                ],
+                "requestBody": {
+                    "content": {
+                        "application/json": {
+                            "schema": {
+                                "properties": {
+                                    "full_name": {
+                                        "type": "string"
+                                    },
+                                    "phone": {
+                                        "type": "string"
+                                    },
+                                    "email": {
+                                        "type": "string"
+                                    },
+                                    "mda_id": {
+                                        "type": "integer"
+                                    },
+                                    "department_id": {
+                                        "type": "integer"
+                                    },
+                                    "grade_level": {
+                                        "type": "string"
+                                    },
+                                    "step": {
+                                        "type": "string"
+                                    },
+                                    "state_of_posting": {
+                                        "type": "string"
+                                    },
+                                    "salary_amount": {
+                                        "type": "number"
+                                    },
+                                    "bank_name": {
+                                        "type": "string"
+                                    },
+                                    "bank_account_number": {
+                                        "type": "string"
+                                    },
+                                    "status": {
+                                        "type": "string",
+                                        "enum": [
+                                            "active",
+                                            "flagged",
+                                            "blocked",
+                                            "suspended"
+                                        ]
+                                    }
+                                },
+                                "type": "object"
+                            }
+                        }
+                    }
+                },
+                "responses": {
+                    "200": {
+                        "description": "Worker updated"
+                    },
+                    "404": {
+                        "description": "Not found"
+                    }
+                },
+                "security": [
+                    {
+                        "bearerAuth": []
+                    }
+                ]
+            },
+            "delete": {
+                "tags": [
+                    "Workers"
+                ],
+                "summary": "Delete a worker",
+                "operationId": "workerDestroy",
+                "parameters": [
+                    {
+                        "name": "id",
+                        "in": "path",
+                        "required": true,
+                        "schema": {
+                            "type": "integer"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Worker deleted"
+                    },
+                    "404": {
+                        "description": "Not found"
+                    }
+                },
+                "security": [
+                    {
+                        "bearerAuth": []
+                    }
+                ]
+            }
+        },
+        "/workers/{id}/verifications": {
+            "get": {
+                "tags": [
+                    "Workers"
+                ],
+                "summary": "List verifications for a worker",
+                "operationId": "workerVerifications",
+                "parameters": [
+                    {
+                        "name": "id",
+                        "in": "path",
+                        "required": true,
+                        "schema": {
+                            "type": "integer"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Paginated verifications"
+                    }
+                },
+                "security": [
+                    {
+                        "bearerAuth": []
+                    }
+                ]
+            }
+        },
+        "/workers/{id}/alerts": {
+            "get": {
+                "tags": [
+                    "Workers"
+                ],
+                "summary": "List ghost worker alerts for a worker",
+                "operationId": "workerAlerts",
+                "parameters": [
+                    {
+                        "name": "id",
+                        "in": "path",
+                        "required": true,
+                        "schema": {
+                            "type": "integer"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Paginated alerts"
+                    }
+                },
+                "security": [
+                    {
+                        "bearerAuth": []
+                    }
+                ]
+            }
+        },
+        "/workers/{id}/block": {
+            "post": {
+                "tags": [
+                    "Workers"
+                ],
+                "summary": "Block a worker",
+                "operationId": "workerBlock",
+                "parameters": [
+                    {
+                        "name": "id",
+                        "in": "path",
+                        "required": true,
+                        "schema": {
+                            "type": "integer"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Worker blocked"
+                    }
+                },
+                "security": [
+                    {
+                        "bearerAuth": []
+                    }
+                ]
+            }
+        },
+        "/workers/{id}/unblock": {
+            "post": {
+                "tags": [
+                    "Workers"
+                ],
+                "summary": "Unblock a worker",
+                "operationId": "workerUnblock",
+                "parameters": [
+                    {
+                        "name": "id",
+                        "in": "path",
+                        "required": true,
+                        "schema": {
+                            "type": "integer"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Worker unblocked"
+                    }
+                },
+                "security": [
+                    {
+                        "bearerAuth": []
+                    }
+                ]
+            }
+        },
+        "/workers/import": {
+            "post": {
+                "tags": [
+                    "Workers"
+                ],
+                "summary": "Bulk import workers via CSV",
+                "operationId": "workerImport",
+                "requestBody": {
+                    "required": true,
+                    "content": {
+                        "multipart/form-data": {
+                            "schema": {
+                                "required": [
+                                    "csv"
+                                ],
+                                "properties": {
+                                    "csv": {
+                                        "description": "CSV file with worker data",
+                                        "type": "string",
+                                        "format": "binary"
+                                    }
+                                },
+                                "type": "object"
+                            }
+                        }
+                    }
+                },
+                "responses": {
+                    "200": {
+                        "description": "Import result with counts"
+                    },
+                    "422": {
+                        "description": "Validation error"
+                    }
+                },
+                "security": [
+                    {
+                        "bearerAuth": []
+                    }
+                ]
+            }
+        },
+        "/auth/login": {
+            "post": {
+                "tags": [
+                    "Auth"
+                ],
+                "summary": "Login and receive a Bearer token",
+                "operationId": "authLogin",
+                "requestBody": {
+                    "required": true,
+                    "content": {
+                        "application/json": {
+                            "schema": {
+                                "required": [
+                                    "email",
+                                    "password"
+                                ],
+                                "properties": {
+                                    "email": {
+                                        "type": "string",
+                                        "example": "adamu.bello@ippis.gov.ng"
+                                    },
+                                    "password": {
+                                        "type": "string",
+                                        "example": "secret"
+                                    }
+                                },
+                                "type": "object"
+                            }
+                        }
+                    }
+                },
+                "responses": {
+                    "200": {
+                        "description": "Login successful"
+                    },
+                    "401": {
+                        "description": "Invalid credentials"
+                    }
+                }
+            }
+        },
+        "/auth/logout": {
+            "post": {
+                "tags": [
+                    "Auth"
+                ],
+                "summary": "Revoke current access token",
+                "operationId": "authLogout",
+                "responses": {
+                    "200": {
+                        "description": "Logged out"
+                    }
+                },
+                "security": [
+                    {
+                        "bearerAuth": []
+                    }
+                ]
+            }
+        },
+        "/auth/me": {
+            "get": {
+                "tags": [
+                    "Auth"
+                ],
+                "summary": "Get authenticated user",
+                "operationId": "authMe",
+                "responses": {
+                    "200": {
+                        "description": "Authenticated user object"
+                    }
+                },
+                "security": [
+                    {
+                        "bearerAuth": []
+                    }
+                ]
+            }
+        }
+    },
+    "components": {
+        "securitySchemes": {
+            "bearerAuth": {
+                "type": "http",
+                "bearerFormat": "Token",
+                "scheme": "bearer"
+            }
+        }
+    },
+    "tags": [
+        {
+            "name": "Audit Logs",
+            "description": "Immutable audit trail of all system actions"
+        },
+        {
+            "name": "Dashboard",
+            "description": "Summary statistics"
+        },
+        {
+            "name": "Departments",
+            "description": "Departments within an MDA"
+        },
+        {
+            "name": "Dispatches",
+            "description": "Field agent dispatch management"
+        },
+        {
+            "name": "Field Agents",
+            "description": "Physical verification field agents"
+        },
+        {
+            "name": "Ghost Worker Alerts",
+            "description": "Ghost worker detection and escalation"
+        },
+        {
+            "name": "MDAs",
+            "description": "Ministries, Departments and Agencies"
+        },
+        {
+            "name": "Worker Onboarding",
+            "description": "Multi-step worker onboarding flow"
+        },
+        {
+            "name": "Payments",
+            "description": "Squad payroll disbursement management"
+        },
+        {
+            "name": "Reports",
+            "description": "Analytics and reporting endpoints"
+        },
+        {
+            "name": "Settings",
+            "description": "System configuration key-value settings"
+        },
+        {
+            "name": "Settlements",
+            "description": "Per-MDA payroll settlement records"
+        },
+        {
+            "name": "Users",
+            "description": "Admin user management"
+        },
+        {
+            "name": "Verifications",
+            "description": "AI proof-of-life verification results"
+        },
+        {
+            "name": "Verification Cycles",
+            "description": "Payroll verification cycle management"
+        },
+        {
+            "name": "Virtual Accounts",
+            "description": "Squad virtual accounts for workers"
+        },
+        {
+            "name": "Webhooks",
+            "description": "Inbound webhook endpoints"
+        },
+        {
+            "name": "Workers",
+            "description": "Government worker management"
+        },
+        {
+            "name": "Auth",
+            "description": "Authentication endpoints"
+        }
+    ]
+}

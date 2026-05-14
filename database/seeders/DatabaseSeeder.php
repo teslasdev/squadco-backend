@@ -19,9 +19,7 @@ class DatabaseSeeder extends Seeder
             MdaSeeder::class,
             DepartmentSeeder::class,
             UserSeeder::class,
-            WorkerSeeder::class,
             VerificationCycleSeeder::class,
-            GhostAlertSeeder::class,
             SquadPaymentSeeder::class,
         ]);
     }

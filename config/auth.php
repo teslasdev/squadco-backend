@@ -42,6 +42,14 @@ return [
             'driver' => 'session',
             'provider' => 'users',
         ],
+
+        // Sanctum guard for authenticated workers (worker portal).
+        // Workers receive a personal access token via /workers-portal/auth/login
+        // and pass it as `Authorization: Bearer <token>` exactly like admin users.
+        'worker' => [
+            'driver' => 'sanctum',
+            'provider' => 'workers',
+        ],
     ],
 
     /*
@@ -67,10 +75,10 @@ return [
             'model' => env('AUTH_MODEL', User::class),
         ],
 
-        // 'users' => [
-        //     'driver' => 'database',
-        //     'table' => 'users',
-        // ],
+        'workers' => [
+            'driver' => 'eloquent',
+            'model' => \App\Models\Worker::class,
+        ],
     ],
 
     /*

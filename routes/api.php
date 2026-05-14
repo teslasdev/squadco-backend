@@ -28,6 +28,7 @@ use App\Http\Controllers\Api\V1\{
 use App\Http\Controllers\Api\V1\Webhooks\SquadWebhookController;
 use App\Http\Controllers\Api\V1\Webhooks\VapiWebhookController;
 use App\Http\Controllers\AuthController;
+use App\Http\Controllers\Api\V1\WorkerAuthController;
 
 /*
 |--------------------------------------------------------------------------
@@ -50,20 +51,42 @@ Route::prefix('v1')->group(function () {
 
     // ─── Public: Worker self-enrol via QR token (no auth, rate-limited) ──────
     Route::prefix('self-enrol')->middleware('throttle:30,1')->group(function () {
-        Route::get('/{token}',         [SelfEnrolController::class, 'show']);
-        Route::put('/{token}/step2',   [SelfEnrolController::class, 'step2']);
-        Route::post('/{token}/step4',  [SelfEnrolController::class, 'step4']);
-        Route::post('/{token}/step5',  [SelfEnrolController::class, 'step5']);
-        Route::post('/{token}/submit', [SelfEnrolController::class, 'submit']);
+        Route::get('/{token}',             [SelfEnrolController::class, 'show']);
+        Route::put('/{token}/employment',  [SelfEnrolController::class, 'employment']);
+        Route::put('/{token}/step2',       [SelfEnrolController::class, 'step2']);
+        Route::post('/{token}/step4',      [SelfEnrolController::class, 'step4']);
+        Route::post('/{token}/step5',      [SelfEnrolController::class, 'step5']);
+        Route::put('/{token}/bank',        [SelfEnrolController::class, 'bank']);
+        Route::post('/{token}/submit',     [SelfEnrolController::class, 'submit']);
     });
 
-    // ─── Auth ─────────────────────────────────────────────────────────────────
+    // ─── Auth (admin) ─────────────────────────────────────────────────────────
     Route::prefix('auth')->group(function () {
         Route::post('/login', [AuthController::class, 'login'])->middleware('throttle:10,1');
 
         Route::middleware('auth:sanctum')->group(function () {
             Route::post('/logout', [AuthController::class, 'logout']);
             Route::get('/me',      [AuthController::class, 'me']);
+        });
+    });
+
+    // ─── Worker Portal (worker self-service auth) ─────────────────────────────
+    //
+    //   Public:
+    //     POST /workers-portal/auth/signup  — code + email + password
+    //     POST /workers-portal/auth/login   — email + password
+    //
+    //   Sanctum-guarded (auth:worker):
+    //     GET  /workers-portal/me           — authenticated worker
+    //     POST /workers-portal/auth/logout
+    //
+    Route::prefix('workers-portal')->group(function () {
+        Route::post('/auth/signup', [WorkerAuthController::class, 'signup'])->middleware('throttle:10,1');
+        Route::post('/auth/login',  [WorkerAuthController::class, 'login'])->middleware('throttle:10,1');
+
+        Route::middleware('auth:worker')->group(function () {
+            Route::get('/me',          [WorkerAuthController::class, 'me']);
+            Route::post('/auth/logout', [WorkerAuthController::class, 'logout']);
         });
     });
 
@@ -93,7 +116,8 @@ Route::prefix('v1')->group(function () {
         Route::get('/workers/pending-activation', [WorkerActivationController::class, 'listPending']);
         Route::post('/workers/{id}/activate',     [WorkerActivationController::class, 'activate']);
         Route::post('/workers/{id}/reject',       [WorkerActivationController::class, 'reject']);
-        Route::post('/workers/{id}/issue-qr',     [WorkerActivationController::class, 'issueQr']);
+        Route::post('/workers/{id}/issue-qr',                [WorkerActivationController::class, 'issueQr']);
+        Route::post('/workers/{id}/issue-activation-code',   [WorkerActivationController::class, 'issueActivationCode']);
 
         Route::apiResource('/workers', WorkerController::class);
         Route::get('/workers/{id}/verifications', [WorkerController::class, 'verifications']);

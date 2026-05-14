@@ -31,7 +31,7 @@ class WorkerActivationController extends Controller
         security: [['bearerAuth' => []]],
         parameters: [
             new OA\Parameter(name: 'mda_id',  in: 'query', required: false, schema: new OA\Schema(type: 'integer')),
-            new OA\Parameter(name: 'channel', in: 'query', required: false, schema: new OA\Schema(type: 'string', enum: ['phone', 'web', 'both'])),
+            new OA\Parameter(name: 'channel', in: 'query', required: false, schema: new OA\Schema(type: 'string', enum: ['phone', 'web'])),
             new OA\Parameter(name: 'search',  in: 'query', required: false, schema: new OA\Schema(type: 'string')),
         ],
         responses: [new OA\Response(response: 200, description: 'Paginated pending workers')]
@@ -75,9 +75,13 @@ class WorkerActivationController extends Controller
             );
         }
 
+        $activationCode = self::generateActivationCode();
+
         $worker->update([
-            'status'      => 'active',
-            'enrolled_at' => $worker->enrolled_at ?? now(),
+            'status'                    => 'active',
+            'enrolled_at'               => $worker->enrolled_at ?? now(),
+            'activation_code'           => $activationCode,
+            'activation_code_issued_at' => now(),
         ]);
 
         WorkerEnrolledEvent::dispatch($worker);
@@ -87,11 +91,87 @@ class WorkerActivationController extends Controller
             'enrolled_at' => $worker->enrolled_at,
         ], $request);
 
+        $appUrl = rtrim((string) config('app.url', 'http://localhost'), '/');
+        $signupUrl = $appUrl . '/workers/signup?code=' . $activationCode;
+
         return $this->successResponse([
-            'worker_id'   => $worker->id,
-            'status'      => $worker->status,
-            'enrolled_at' => $worker->enrolled_at,
-        ], 'Worker activated. Eligible for automated verification.');
+            'worker_id'       => $worker->id,
+            'status'          => $worker->status,
+            'enrolled_at'     => $worker->enrolled_at,
+            'activation_code' => $activationCode,
+            'signup_url'      => $signupUrl,
+        ], 'Worker activated. Share the activation code or signup URL with them.');
+    }
+
+    // ─── POST /workers/{id}/issue-activation-code ──────────────────────────
+    //
+    // Re-issues an activation code for an already-active worker who needs to
+    // re-create their portal account (e.g. lost their original code, never
+    // signed up, or admin wants to reset their access).
+
+    #[OA\Post(
+        path: '/workers/{id}/issue-activation-code',
+        operationId: 'workerIssueActivationCode',
+        tags: ['Worker Activation'],
+        summary: 'Reissue the activation code for an active worker (e.g. they lost the original)',
+        security: [['bearerAuth' => []]],
+        parameters: [new OA\Parameter(name: 'id', in: 'path', required: true, schema: new OA\Schema(type: 'integer'))],
+        responses: [
+            new OA\Response(response: 200, description: 'Fresh activation code'),
+            new OA\Response(response: 422, description: 'Worker must be active'),
+        ]
+    )]
+    public function issueActivationCode(Request $request, int $id): JsonResponse
+    {
+        $worker = Worker::findOrFail($id);
+
+        if ($worker->status !== 'active') {
+            return $this->errorResponse(
+                "Activation codes can only be issued for active workers. Current status: '{$worker->status}'.",
+                422
+            );
+        }
+
+        $code = self::generateActivationCode();
+
+        $worker->update([
+            'activation_code'           => $code,
+            'activation_code_issued_at' => now(),
+            // Reset password so worker must re-claim via signup. Keeps old portal
+            // session tokens valid until they explicitly log out, but the new
+            // signup will revoke them via createToken naming if needed.
+            'account_created_at'        => null,
+            'password'                  => null,
+        ]);
+
+        $appUrl = rtrim((string) config('app.url', 'http://localhost'), '/');
+        $signupUrl = $appUrl . '/workers/signup?code=' . $code;
+
+        $this->audit->log('worker_activation_code_reissued', 'Worker', $worker->id, [], [
+            'signup_url' => $signupUrl,
+        ], $request);
+
+        return $this->successResponse([
+            'worker_id'       => $worker->id,
+            'activation_code' => $code,
+            'signup_url'      => $signupUrl,
+        ], 'Activation code reissued.');
+    }
+
+    /**
+     * Generate a unique 8-character alphanumeric activation code.
+     * Excludes ambiguous characters (0/O, 1/I/L) for printing/reading clarity.
+     */
+    protected static function generateActivationCode(): string
+    {
+        $alphabet = 'ABCDEFGHJKMNPQRSTUVWXYZ23456789';
+        do {
+            $code = '';
+            for ($i = 0; $i < 8; $i++) {
+                $code .= $alphabet[random_int(0, strlen($alphabet) - 1)];
+            }
+        } while (Worker::where('activation_code', $code)->exists());
+        return $code;
     }
 
     // ─── POST /workers/{id}/reject ──────────────────────────────────────────

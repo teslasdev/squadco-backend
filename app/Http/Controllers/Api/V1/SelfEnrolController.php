@@ -67,11 +67,15 @@ class SelfEnrolController extends Controller
         $worker = $this->findWorkerByToken($token);
         if ($worker instanceof JsonResponse) return $worker;
 
-        $needsFace  = in_array($worker->verification_channel, ['web', 'both'], true);
-        $needsVoice = in_array($worker->verification_channel, ['phone', 'both'], true);
+        $needsFace  = in_array($worker->verification_channel, ['web'], true);
+        $needsVoice = in_array($worker->verification_channel, ['phone'], true);
 
         $pendingSteps = [];
-        // step2 (personal info) is always needed if not already filled (we detect by nin presence)
+        // employment (just job title — admin may have left blank)
+        if (empty($worker->job_title)) {
+            $pendingSteps[] = 'employment';
+        }
+        // personal identity (NIN/BVN/phone) — always required from worker
         if (empty($worker->nin) || empty($worker->bvn) || empty($worker->phone)) {
             $pendingSteps[] = 'step2';
         }
@@ -81,19 +85,107 @@ class SelfEnrolController extends Controller
         if ($needsVoice && !$worker->voice_enrolled) {
             $pendingSteps[] = 'step5';
         }
+        // bank account (worker fills) — salary amount is set by admin before activation
+        if (empty($worker->bank_account_number) || empty($worker->bank_name)) {
+            $pendingSteps[] = 'bank';
+        }
 
         return $this->successResponse([
             'worker_id'            => $worker->id,
             'full_name'            => $worker->full_name,
+            'email'                => $worker->email,
             'ippis_id'             => $worker->ippis_id,
             'mda_name'             => $worker->mda?->name,
+            'mda_id'               => $worker->mda_id,
             'department_name'      => $worker->department?->name,
+            'department_id'        => $worker->department_id,
             'job_title'            => $worker->job_title,
+            'grade_level'          => $worker->grade_level,
+            'step'                 => $worker->step,
+            'employment_date'      => $worker->employment_date,
+            'employment_type'      => $worker->employment_type,
+            'state_of_posting'     => $worker->state_of_posting,
+            'lga'                  => $worker->lga,
+            'office_address'       => $worker->office_address,
             'verification_channel' => $worker->verification_channel,
             'onboarding_status'    => $worker->onboarding_status,
             'pending_steps'        => $pendingSteps,
             'can_submit'           => empty($pendingSteps),
         ], 'Self-enrol context loaded.');
+    }
+
+    // ─── PUT /self-enrol/{token}/employment ─────────────────────────────────
+    //
+    // Worker fills in their own employment details (department, job title,
+    // grade level, step, employment date, employment type, state of posting,
+    // LGA, office address) that the admin opted to leave blank at /step1.
+
+    #[OA\Put(
+        path: '/self-enrol/{token}/employment',
+        operationId: 'selfEnrolEmployment',
+        tags: ['Self Enrolment'],
+        summary: 'Worker fills in their own employment details (was admin step1 fields)',
+        parameters: [new OA\Parameter(name: 'token', in: 'path', required: true, schema: new OA\Schema(type: 'string'))],
+        responses: [
+            new OA\Response(response: 200, description: 'Employment details saved'),
+            new OA\Response(response: 422, description: 'Validation error'),
+        ]
+    )]
+    public function employment(Request $request, string $token): JsonResponse
+    {
+        $worker = $this->findWorkerByToken($token);
+        if ($worker instanceof JsonResponse) return $worker;
+
+        $data = $request->validate([
+            'job_title' => 'required|string|max:255',
+        ]);
+
+        $worker->update($data);
+
+        $this->audit->log('self_enrol_employment', 'Worker', $worker->id, [], $data, $request);
+
+        return $this->successResponse([
+            'onboarding_status' => $worker->onboarding_status,
+        ], 'Employment details saved.');
+    }
+
+    // ─── PUT /self-enrol/{token}/bank ───────────────────────────────────────
+    //
+    // Worker fills their salary account (bank name, code, account number,
+    // account name from Squad lookup). Salary AMOUNT is NOT collected here —
+    // admin sets it during activation, since it's HR/budget data the worker
+    // shouldn't be able to set themselves.
+
+    #[OA\Put(
+        path: '/self-enrol/{token}/bank',
+        operationId: 'selfEnrolBank',
+        tags: ['Self Enrolment'],
+        summary: 'Worker submits their salary bank account (admin sets the salary amount on activation)',
+        parameters: [new OA\Parameter(name: 'token', in: 'path', required: true, schema: new OA\Schema(type: 'string'))],
+        responses: [
+            new OA\Response(response: 200, description: 'Bank details saved'),
+            new OA\Response(response: 422, description: 'Validation error'),
+        ]
+    )]
+    public function bank(Request $request, string $token): JsonResponse
+    {
+        $worker = $this->findWorkerByToken($token);
+        if ($worker instanceof JsonResponse) return $worker;
+
+        $data = $request->validate([
+            'bank_name'           => 'required|string',
+            'bank_code'           => 'required|string',
+            'bank_account_number' => 'required|string|size:10',
+            'bank_account_name'   => 'required|string',
+        ]);
+
+        $worker->update($data);
+
+        $this->audit->log('self_enrol_bank', 'Worker', $worker->id, [], $data, $request);
+
+        return $this->successResponse([
+            'onboarding_status' => $worker->onboarding_status,
+        ], 'Bank details saved.');
     }
 
     // ─── PUT /self-enrol/{token}/step2 ──────────────────────────────────────
@@ -358,10 +450,13 @@ class SelfEnrolController extends Controller
         if ($worker instanceof JsonResponse) return $worker;
 
         // Check the worker has filled everything required for their channel.
-        $needsFace  = in_array($worker->verification_channel, ['web', 'both'], true);
-        $needsVoice = in_array($worker->verification_channel, ['phone', 'both'], true);
+        $needsFace  = in_array($worker->verification_channel, ['web'], true);
+        $needsVoice = in_array($worker->verification_channel, ['phone'], true);
 
         $missing = [];
+        if (empty($worker->job_title)) {
+            $missing[] = 'employment';
+        }
         if (empty($worker->nin) || empty($worker->bvn) || empty($worker->phone)) {
             $missing[] = 'step2';
         }
@@ -370,6 +465,9 @@ class SelfEnrolController extends Controller
         }
         if ($needsVoice && !$worker->voice_enrolled) {
             $missing[] = 'step5';
+        }
+        if (empty($worker->bank_account_number) || empty($worker->bank_name)) {
+            $missing[] = 'bank';
         }
 
         if (!empty($missing)) {

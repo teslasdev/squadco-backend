@@ -69,9 +69,15 @@ class OnboardingController extends Controller
     public function step1(Step1Request $request): JsonResponse
     {
         $data = $request->validated();
-        // Workers start in pending_self_enrol — admin has filled employment data,
-        // but worker still needs to confirm personal info + capture biometrics
-        // (either at a kiosk via the admin, or via the self-enrol QR link).
+
+        // System-generated IPPIS ID — admins never type this. Globally unique,
+        // 6-digit zero-padded counter so it sorts and reads naturally
+        // (IPPIS-000001, IPPIS-000002, …).
+        $data['ippis_id'] = $this->generateIppisId();
+
+        // Workers start in pending_self_enrol. Either the admin keeps clicking
+        // through the wizard (kiosk path), or they hand the QR / signup link
+        // to the worker who completes it themselves.
         $data['status']            = 'pending_self_enrol';
         $data['onboarding_status'] = 'step1';
         $data['onboarding_token']  = (string) Str::uuid();
@@ -80,12 +86,36 @@ class OnboardingController extends Controller
 
         $this->audit->log('onboarding_step1', 'Worker', $worker->id, [], $data, $request);
 
+        // APP_URL must point at the React frontend (where /self-enrol/{token}
+        // is actually served), not the Laravel API. The two are merged at the
+        // same origin in this project (Vite at :5173 proxies API calls to
+        // Laravel) so APP_URL=http://localhost:5173 is the right value.
+        $appUrl = rtrim((string) config('app.url', 'http://localhost:5173'), '/');
+        $selfEnrolUrl = $appUrl . '/self-enrol/' . $worker->onboarding_token;
+
         return $this->successResponse([
             'worker_id'         => $worker->id,
+            'ippis_id'          => $worker->ippis_id,
+            'email'             => $worker->email,
             'onboarding_token'  => $worker->onboarding_token,
             'onboarding_status' => $worker->onboarding_status,
             'status'            => $worker->status,
-        ], 'Step 1 completed.', 201);
+            'self_enrol_url'    => $selfEnrolUrl,
+        ], 'Worker enrolled. Share the self-enrol link with them to complete their profile.', 201);
+    }
+
+    /**
+     * Generate a unique IPPIS ID. Uses the current worker count + 1 as the
+     * sequence, then probes for collisions (rare, but cheap) before returning.
+     */
+    protected function generateIppisId(): string
+    {
+        $seq = Worker::max('id') ?? 0;
+        do {
+            $seq++;
+            $candidate = 'IPPIS-' . str_pad((string) $seq, 6, '0', STR_PAD_LEFT);
+        } while (Worker::where('ippis_id', $candidate)->exists());
+        return $candidate;
     }
 
     // ─── Step 2: Personal / identity details ─────────────────────────────────
@@ -530,8 +560,8 @@ class OnboardingController extends Controller
         }
 
         // Channel-aware biometric requirements: phone-only skips face, web-only skips voice.
-        $needsFace  = in_array($worker->verification_channel, ['web', 'both'], true);
-        $needsVoice = in_array($worker->verification_channel, ['phone', 'both'], true);
+        $needsFace  = in_array($worker->verification_channel, ['web'], true);
+        $needsVoice = in_array($worker->verification_channel, ['phone'], true);
 
         if ($needsFace && !$worker->face_enrolled) {
             return $this->errorResponse('Face biometric not enrolled (step 4 incomplete).', 422);

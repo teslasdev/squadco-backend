@@ -3,7 +3,9 @@
 namespace App\Models;
 
 use Illuminate\Database\Eloquent\Factories\HasFactory;
-use Illuminate\Database\Eloquent\Model;
+use Illuminate\Foundation\Auth\User as Authenticatable;
+use Illuminate\Notifications\Notifiable;
+use Laravel\Sanctum\HasApiTokens;
 
 /**
  * @OA\Schema(
@@ -28,9 +30,11 @@ use Illuminate\Database\Eloquent\Model;
  *   @OA\Property(property="last_verified_at", type="string", format="date-time")
  * )
  */
-class Worker extends Model
+class Worker extends Authenticatable
 {
     use HasFactory;
+    use HasApiTokens;
+    use Notifiable;
 
     protected $fillable = [
         'ippis_id', 'full_name', 'date_of_birth', 'gender', 'employment_date',
@@ -46,19 +50,40 @@ class Worker extends Model
         'voice_template_url', 'voice_enrolled',
         'voice_embedding_ecapa', 'voice_embedding_campplus',
         'verification_channel',
+        // Auth fields
+        'password',
+        'activation_code', 'activation_code_issued_at',
+        'account_created_at', 'last_login_at',
+    ];
+
+    /**
+     * Hidden from JSON serialisation — never leak hashed passwords, codes, or
+     * the high-dim biometric embedding arrays to the frontend.
+     */
+    protected $hidden = [
+        'password',
+        'activation_code',
+        'remember_token',
+        'face_embedding',
+        'voice_embedding_ecapa',
+        'voice_embedding_campplus',
     ];
 
     protected $casts = [
-        'enrolled_at'              => 'datetime',
-        'last_verified_at'         => 'datetime',
-        'employment_date'          => 'date',
-        'date_of_birth'            => 'date',
-        'salary_amount'            => 'decimal:2',
-        'face_enrolled'            => 'boolean',
-        'voice_enrolled'           => 'boolean',
-        'face_embedding'           => 'array',
-        'voice_embedding_ecapa'    => 'array',
-        'voice_embedding_campplus' => 'array',
+        'enrolled_at'               => 'datetime',
+        'last_verified_at'          => 'datetime',
+        'activation_code_issued_at' => 'datetime',
+        'account_created_at'        => 'datetime',
+        'last_login_at'             => 'datetime',
+        'employment_date'           => 'date',
+        'date_of_birth'             => 'date',
+        'salary_amount'             => 'decimal:2',
+        'face_enrolled'             => 'boolean',
+        'voice_enrolled'            => 'boolean',
+        'password'                  => 'hashed',
+        'face_embedding'            => 'array',
+        'voice_embedding_ecapa'     => 'array',
+        'voice_embedding_campplus'  => 'array',
     ];
 
     public function mda()

@@ -57,7 +57,7 @@ class FaceVerificationController extends Controller
 
         $worker = Worker::findOrFail($data['worker_id']);
 
-        if (!in_array($worker->verification_channel, ['web', 'both'], true)) {
+        if (!in_array($worker->verification_channel, ['web'], true)) {
             return $this->errorResponse(
                 'Worker is not enrolled for web verification (channel=' . $worker->verification_channel . ').',
                 422

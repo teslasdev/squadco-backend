@@ -468,11 +468,15 @@ class FaceVerificationController extends Controller
     /**
      * Records the face verification result.
      *
-     * If a cycle seeded a PENDING row for this worker (verdict NULL,
-     * verified_at NULL — see RunVerificationCycleJob), we FILL THAT ROW IN so
-     * the completion attaches to the cycle that requested it and the cycle's
-     * tallies are accurate. Otherwise (ad-hoc admin check with no pending
-     * cycle row) we create a fresh row on the "Continuous" cycle as before.
+     * Three cases:
+     *   1. A cycle seeded a PENDING row (verdict NULL) for this worker — FILL
+     *      IT IN, so the result attaches to the cycle that requested it.
+     *   2. No pending row but the worker has prior verifications (a RETRY
+     *      after a FAIL — workers can retry every time until they pass) —
+     *      create a NEW attempt row on the SAME cycle as their most recent
+     *      verification, preserving full attempt history (FAIL, FAIL, PASS…)
+     *      and keeping that cycle's live tallies correct.
+     *   3. No history at all (ad-hoc admin check) — fresh row on "Continuous".
      */
     private function writeVerification(Worker $worker, FaceVerificationSession $session, int $score, string $verdict, ?string $failureReason): Verification
     {
@@ -498,18 +502,28 @@ class FaceVerificationController extends Controller
             return $pending->fresh();
         }
 
-        $cycle = VerificationCycle::firstOrCreate(
-            ['name' => 'Continuous'],
-            [
-                'cycle_month' => now()->startOfMonth()->toDateString(),
-                'status'      => 'running',
-                'started_at'  => now(),
-            ]
-        );
+        // Retry path: no pending row, but a previous (resolved) verification
+        // exists → reuse that verification's cycle so the new attempt rolls
+        // up under the same payroll cycle. Otherwise fall back to the
+        // ad-hoc "Continuous" bucket.
+        $lastResolved = Verification::where('worker_id', $worker->id)
+            ->whereNotNull('verdict')
+            ->latest('id')
+            ->first();
+
+        $cycleId = $lastResolved?->cycle_id
+            ?? VerificationCycle::firstOrCreate(
+                ['name' => 'Continuous'],
+                [
+                    'cycle_month' => now()->startOfMonth()->toDateString(),
+                    'status'      => 'running',
+                    'started_at'  => now(),
+                ]
+            )->id;
 
         return Verification::create([
             'worker_id'                => $worker->id,
-            'cycle_id'                 => $cycle->id,
+            'cycle_id'                 => $cycleId,
             'channel'                  => 'app',
             'trust_score'              => $score,
             'verdict'                  => $verdict,

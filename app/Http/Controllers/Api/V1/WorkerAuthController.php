@@ -278,12 +278,20 @@ class WorkerAuthController extends Controller
             ];
         }
 
-        // A verification cycle seeds a PENDING row (verdict NULL, verified_at
-        // NULL) for web workers. Surface it as an actionable task that deep-
-        // links into the worker's self-serve face check.
+        // Verification task logic (only for still-active workers — a blocked/
+        // rejected/suspended worker has been flagged and shouldn't be invited
+        // to keep retrying):
+        //   1. An open PENDING row (cycle-seeded, verdict NULL)  → do it now.
+        //   2. Latest verdict is FAIL/INCONCLUSIVE               → retry now,
+        //      and KEEP offering it until they PASS (no new cycle needed).
+        //   3. Never verified yet                                → informational.
+        //   4. Latest verdict PASS                               → nothing.
+        // `$verifications` is ordered newest-first (verified_at, id).
         $hasPending = $verifications->contains(
             fn ($v) => $v->verdict === null && $v->verified_at === null
         );
+        $latest = $verifications->first();
+        $isActive = $worker->status === 'active';
 
         if ($hasPending) {
             $tasks[] = [
@@ -293,7 +301,19 @@ class WorkerAuthController extends Controller
                 'severity' => 'action',
                 'cta'      => '/workers/face-verification',
             ];
-        } elseif ($worker->status === 'active' && $verifications->isEmpty()) {
+        } elseif ($isActive && $latest && in_array($latest->verdict, ['FAIL', 'INCONCLUSIVE'], true)) {
+            // Last attempt didn't pass — let them try again, every time, until
+            // they succeed. Each retry is recorded as a new attempt row.
+            $tasks[] = [
+                'key'      => 'face_verification_retry',
+                'title'    => $latest->verdict === 'FAIL'
+                    ? 'Verification failed — try again'
+                    : 'Verification inconclusive — try again',
+                'detail'   => 'Your last face check didn’t pass, so your salary is on hold. You can retry now — find good lighting and follow the on-screen prompts.',
+                'severity' => 'action',
+                'cta'      => '/workers/face-verification',
+            ];
+        } elseif ($isActive && $verifications->isEmpty()) {
             // Active worker who has never been verified → first one is pending.
             $tasks[] = [
                 'key'      => 'first_verification_pending',

@@ -44,7 +44,7 @@ class VapiCallService
 
         $body = [
             'phoneNumberId' => $this->phoneNumberId,
-            'customer'      => ['number' => $toNumber],
+            'customer'      => ['number' => $this->normalizeE164($toNumber)],
             'assistantId'   => $assistantId,
             'metadata'      => $metadata,
         ];
@@ -82,5 +82,48 @@ class VapiCallService
                 'status'  => null,
             ];
         }
+    }
+
+    /**
+     * Normalise a phone number to E.164, defaulting to Nigeria (+234).
+     *
+     * Workers are registered in local format ("07026702294",
+     * "08012345678") or with spaces/dashes. Vapi requires strict E.164
+     * ("+2347026702294") or the call is rejected / mis-dialled. Rules:
+     *   - already +<digits>            → kept as-is (any country)
+     *   - leading 0 + 10 digits        → Nigerian local: 0X… → +234X…
+     *   - 234XXXXXXXXXX (13 digits)    → add the leading '+'
+     *   - bare 10-digit subscriber no. → assume Nigerian → +234…
+     * Anything else is returned digit-cleaned with a '+' so Vapi can at
+     * least try, and the failure surfaces in the dispatch result.
+     */
+    private function normalizeE164(string $raw): string
+    {
+        $n = trim($raw);
+
+        // Keep an explicit international number untouched (just strip spaces).
+        if (str_starts_with($n, '+')) {
+            return '+' . preg_replace('/\D/', '', $n);
+        }
+
+        $digits = preg_replace('/\D/', '', $n);
+
+        // 0XXXXXXXXXX → Nigerian local format (0 + 10-digit subscriber).
+        if (strlen($digits) === 11 && str_starts_with($digits, '0')) {
+            return '+234' . substr($digits, 1);
+        }
+
+        // 234XXXXXXXXXX → already country-coded, just missing the '+'.
+        if (strlen($digits) === 13 && str_starts_with($digits, '234')) {
+            return '+' . $digits;
+        }
+
+        // Bare 10-digit subscriber number → assume Nigerian.
+        if (strlen($digits) === 10) {
+            return '+234' . $digits;
+        }
+
+        // Fallback: prefix '+' so Vapi gets a best-effort E.164 attempt.
+        return '+' . $digits;
     }
 }

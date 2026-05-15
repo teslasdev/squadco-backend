@@ -338,8 +338,19 @@ class FaceVerificationController extends Controller
             'latency_ms'          => ($session->latency_ms ?? 0) + $latency,
         ]);
 
-        // Compute final verdict
-        $allPassed = $session->identity_verdict === 'PASS'
+        // Compute final verdict.
+        //
+        // Identity is judged at frame 1 by the single-frame /face/verify,
+        // which has NO pose evidence yet — so the AI structurally CANNOT
+        // return PASS there (it correctly refuses to confirm a live person
+        // from one static frame and returns INCONCLUSIVE). A hard identity
+        // FAIL (wrong person) already ended the session back in frame1(), so
+        // reaching this point means the face matched well enough — it was
+        // just awaiting liveness proof. Frames 2 & 3 (the two head turns)
+        // ARE that liveness proof. So: identity is satisfied if frame 1 was
+        // PASS *or* INCONCLUSIVE, and both head turns passed.
+        $identityOk = in_array($session->identity_verdict, ['PASS', 'INCONCLUSIVE'], true);
+        $allPassed = $identityOk
                   && $session->pose_right_passed
                   && $passed;
 
@@ -349,12 +360,14 @@ class FaceVerificationController extends Controller
         } elseif (!$passed) {
             $finalVerdict = 'FAIL';
             $failureReason = 'pose_left_failed';
-        } elseif ($session->identity_verdict === 'INCONCLUSIVE') {
-            $finalVerdict = 'INCONCLUSIVE';
-            $failureReason = 'identity_inconclusive';
-        } else {
+        } elseif (!$session->pose_right_passed) {
             $finalVerdict = 'FAIL';
-            $failureReason = 'unknown';
+            $failureReason = 'pose_right_failed';
+        } else {
+            // Identity was a hard FAIL — but frame1() already returns early
+            // on that, so this is effectively unreachable. Kept as a guard.
+            $finalVerdict = 'FAIL';
+            $failureReason = 'identity_mismatch';
         }
 
         $verification = $this->writeVerification($worker, $session, $session->identity_score, $finalVerdict, $failureReason);

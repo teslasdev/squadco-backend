@@ -127,15 +127,28 @@ class RunVerificationCycleJob implements ShouldQueue
                     continue;
                 }
 
-                // Don't double-seed if this worker already has an open pending
-                // row for this cycle (e.g. cycle re-run).
-                $existing = Verification::where('worker_id', $worker->id)
+                // Idempotent per cycle: if this worker already has ANY
+                // verification for THIS cycle — pending OR already resolved
+                // (e.g. they failed earlier this cycle, or the cycle is being
+                // re-run) — don't seed another. A retry after a FAIL happens
+                // in the NEXT cycle (different cycle_id), where this check
+                // passes and a fresh pending row is created automatically.
+                // Workers an admin has flagged are excluded upstream by the
+                // status='active' filter, so blocked/rejected aren't retried.
+                $alreadyInCycle = Verification::where('worker_id', $worker->id)
                     ->where('cycle_id', $this->cycle->id)
-                    ->whereNull('verdict')
-                    ->whereNull('verified_at')
                     ->exists();
-                if ($existing) {
-                    $facePending++;
+                if ($alreadyInCycle) {
+                    // Count it toward the expected set only if it's still
+                    // outstanding; resolved rows are already tallied live.
+                    $stillPending = Verification::where('worker_id', $worker->id)
+                        ->where('cycle_id', $this->cycle->id)
+                        ->whereNull('verdict')
+                        ->whereNull('verified_at')
+                        ->exists();
+                    if ($stillPending) {
+                        $facePending++;
+                    }
                     continue;
                 }
 

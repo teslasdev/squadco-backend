@@ -190,6 +190,120 @@ class WorkerAuthController extends Controller
     }
 
     /**
+     * GET /v1/workers-portal/my-payments
+     *
+     * The worker's own salary disbursements + roll-ups for the wallet card.
+     * Strictly scoped to the authenticated worker — a worker can never see
+     * another worker's money. Aggregates are computed in the query so the
+     * frontend never has to sum a paginated list itself.
+     */
+    public function myPayments(Request $request)
+    {
+        $worker = $request->user('worker');
+
+        $payments = $worker->payments()
+            ->latest('disbursed_at')
+            ->latest('id')
+            ->get(['id', 'amount', 'status', 'bank_name', 'bank_account_masked',
+                    'squad_reference', 'disbursed_at', 'created_at']);
+
+        // "Total received to date" = only money that actually went out.
+        $released = $payments->where('status', 'released');
+
+        return $this->successResponse([
+            'total_received'  => (float) $released->sum('amount'),
+            'payment_count'   => $payments->count(),
+            'released_count'  => $released->count(),
+            'last_paid_at'    => optional($released->first())->disbursed_at,
+            'payments'        => $payments->map(fn ($p) => [
+                'id'                  => $p->id,
+                'amount'              => (float) $p->amount,
+                'status'              => $p->status,
+                'bank_name'           => $p->bank_name,
+                'bank_account_masked' => $p->bank_account_masked,
+                'reference'           => $p->squad_reference,
+                'disbursed_at'        => $p->disbursed_at,
+                'created_at'          => $p->created_at,
+            ])->values(),
+        ]);
+    }
+
+    /**
+     * GET /v1/workers-portal/my-verifications
+     *
+     * The worker's verification history + a derived "tasks" list. There is no
+     * task table — outstanding actions are inferred from the worker's status
+     * and verification state, which is the honest representation of what they
+     * actually owe right now.
+     */
+    public function myVerifications(Request $request)
+    {
+        $worker = $request->user('worker');
+
+        $verifications = $worker->verifications()
+            ->latest('verified_at')
+            ->latest('id')
+            ->get(['id', 'channel', 'trust_score', 'verdict', 'salary_released',
+                    'verified_at', 'created_at']);
+
+        // Derive the action list from real state. Each task is something the
+        // worker can see and (where relevant) act on from the portal.
+        $tasks = [];
+
+        if ($worker->status === 'pending_self_enrol') {
+            $tasks[] = [
+                'key'      => 'complete_enrolment',
+                'title'    => 'Complete your biometric enrolment',
+                'detail'   => 'Finish identity, face/voice and bank capture so your MDA can review you.',
+                'severity' => 'action',
+                'cta'      => $worker->onboarding_token
+                    ? '/self-enrol/' . $worker->onboarding_token
+                    : null,
+            ];
+        } elseif ($worker->status === 'pending_review') {
+            $tasks[] = [
+                'key'      => 'awaiting_review',
+                'title'    => 'Enrolment under review',
+                'detail'   => 'Your MDA administrator is verifying your captures. No action needed.',
+                'severity' => 'info',
+                'cta'      => null,
+            ];
+        } elseif (in_array($worker->status, ['rejected', 'blocked', 'suspended'], true)) {
+            $tasks[] = [
+                'key'      => 'account_blocked',
+                'title'    => 'Account not active',
+                'detail'   => 'Your account is ' . $worker->status . '. Contact your MDA administrator.',
+                'severity' => 'critical',
+                'cta'      => null,
+            ];
+        }
+
+        // Active worker who has never been verified → first verification pending.
+        if ($worker->status === 'active' && $verifications->isEmpty()) {
+            $tasks[] = [
+                'key'      => 'first_verification_pending',
+                'title'    => 'First verification pending',
+                'detail'   => 'Your first proof-of-life check will arrive on the next payroll cycle.',
+                'severity' => 'info',
+                'cta'      => null,
+            ];
+        }
+
+        return $this->successResponse([
+            'tasks'          => $tasks,
+            'verifications'  => $verifications->map(fn ($v) => [
+                'id'              => $v->id,
+                'channel'         => $v->channel,
+                'trust_score'     => $v->trust_score,
+                'verdict'         => $v->verdict,
+                'salary_released' => (bool) $v->salary_released,
+                'verified_at'     => $v->verified_at,
+                'created_at'      => $v->created_at,
+            ])->values(),
+        ]);
+    }
+
+    /**
      * POST /v1/workers-portal/auth/logout
      */
     public function logout(Request $request)

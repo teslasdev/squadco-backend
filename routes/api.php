@@ -85,8 +85,10 @@ Route::prefix('v1')->group(function () {
         Route::post('/auth/login',  [WorkerAuthController::class, 'login'])->middleware('throttle:10,1');
 
         Route::middleware('auth:worker')->group(function () {
-            Route::get('/me',          [WorkerAuthController::class, 'me']);
-            Route::post('/auth/logout', [WorkerAuthController::class, 'logout']);
+            Route::get('/me',                [WorkerAuthController::class, 'me']);
+            Route::get('/my-payments',       [WorkerAuthController::class, 'myPayments']);
+            Route::get('/my-verifications',  [WorkerAuthController::class, 'myVerifications']);
+            Route::post('/auth/logout',      [WorkerAuthController::class, 'logout']);
         });
     });
 

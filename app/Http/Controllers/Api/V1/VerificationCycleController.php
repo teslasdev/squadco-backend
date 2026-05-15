@@ -3,6 +3,7 @@
 namespace App\Http\Controllers\Api\V1;
 
 use App\Http\Controllers\Controller;
+use App\Models\Setting;
 use App\Models\VerificationCycle;
 use App\Jobs\RunVerificationCycleJob;
 use App\Services\AuditService;
@@ -26,6 +27,65 @@ class VerificationCycleController extends Controller
     public function index(): JsonResponse
     {
         return $this->successResponse(VerificationCycle::with('creator')->latest()->paginate(20));
+    }
+
+    #[OA\Get(
+        path: '/cycles/settings/interval',
+        operationId: 'cycleIntervalSettingsShow',
+        tags: ['Verification Cycles'],
+        summary: 'Get verification cycle interval settings',
+        security: [['bearerAuth' => []]],
+        responses: [new OA\Response(response: 200, description: 'Cycle interval settings')]
+    )]
+    public function intervalSettings(): JsonResponse
+    {
+        $values = Setting::query()
+            ->whereIn('key', ['verification_cycle_interval_days', 'verification_cycle_interval_description'])
+            ->pluck('value', 'key');
+
+        $intervalDays = $values->get('verification_cycle_interval_days');
+        $description = $values->get('verification_cycle_interval_description');
+
+        return $this->successResponse([
+            'interval_days' => $intervalDays !== null ? (int) $intervalDays : null,
+            'description' => $description,
+        ]);
+    }
+
+    #[OA\Put(
+        path: '/cycles/settings/interval',
+        operationId: 'cycleIntervalSettingsUpdate',
+        tags: ['Verification Cycles'],
+        summary: 'Set mandatory verification cycle interval (in days)',
+        security: [['bearerAuth' => []]],
+        responses: [
+            new OA\Response(response: 200, description: 'Cycle interval updated'),
+            new OA\Response(response: 422, description: 'Validation error'),
+        ]
+    )]
+    public function updateIntervalSettings(Request $request): JsonResponse
+    {
+        $data = $request->validate([
+            'interval_days' => 'required|integer|min:1|max:365',
+            'description' => 'nullable|string|max:255',
+        ]);
+
+        Setting::updateOrCreate(
+            ['key' => 'verification_cycle_interval_days'],
+            ['value' => (string) $data['interval_days'], 'description' => 'Number of days between mandatory verification cycles.']
+        );
+
+        Setting::updateOrCreate(
+            ['key' => 'verification_cycle_interval_description'],
+            ['value' => $data['description'] ?? null, 'description' => 'Optional description for verification cycle interval.']
+        );
+
+        $this->audit->log('cycle_interval_updated', 'Setting', null, [], $data, $request);
+
+        return $this->successResponse([
+            'interval_days' => (int) $data['interval_days'],
+            'description' => $data['description'] ?? null,
+        ], 'Verification cycle interval updated.');
     }
 
     #[OA\Post(

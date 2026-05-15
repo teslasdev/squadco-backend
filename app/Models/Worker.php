@@ -115,4 +115,9 @@ class Worker extends Authenticatable
     {
         return $this->hasOne(VirtualAccount::class);
     }
+
+    public function mandate()
+    {
+        return $this->hasOne(WorkerMandate::class);
+    }
 }

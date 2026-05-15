@@ -75,6 +75,11 @@ class VirtualAccountController extends Controller
             'last_name'           => explode(' ', $worker->full_name)[1] ?? '',
             'mobile_num'          => $worker->phone ?? '08000000000',
             'bvn'                 => $worker->bvn ?? '',
+            'dob'                  => $worker->date_of_birth?->format('m/d/Y') ?? '01/01/1990',
+            'address'              => $worker->home_address ?? 'N/A',
+            'gender'               => $worker->gender == 'male' ? '1' : ($worker->gender == 'female' ? '2' : 'N/A'),
+            'email'                => $worker->email ?? 'N/A',
+            "beneficiary_account"  => $worker->bank_account ?? "4920299492"
         ]);
 
         if (!$result['success']) {

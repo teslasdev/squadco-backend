@@ -149,6 +149,8 @@ Route::prefix('v1')->group(function () {
 
         // Verification Cycles
         Route::apiResource('/cycles', VerificationCycleController::class)->except(['update', 'destroy']);
+        Route::get('/cycles/settings/interval', [VerificationCycleController::class, 'intervalSettings']);
+        Route::put('/cycles/settings/interval', [VerificationCycleController::class, 'updateIntervalSettings']);
         Route::post('/cycles/{id}/run',    [VerificationCycleController::class, 'run']);
         Route::get('/cycles/{id}/results', [VerificationCycleController::class, 'results']);
         Route::get('/cycles/{id}/summary', [VerificationCycleController::class, 'summary']);
@@ -182,6 +184,12 @@ Route::prefix('v1')->group(function () {
         Route::get('/payments/{id}',                [PaymentController::class, 'show']);
         Route::post('/payments/release',            [PaymentController::class, 'release']);
         Route::post('/payments/block/{worker_id}',  [PaymentController::class, 'blockWorker']);
+        Route::post('/payments/lookup',              [PaymentController::class, 'verifyPaymentDetails']);
+        Route::get('/payments/mandates/banks',      [PaymentController::class, 'mandateBanks']);
+        Route::get('/payments/mandates/settings',   [PaymentController::class, 'mandateSettings']);
+        Route::put('/payments/mandates/settings',   [PaymentController::class, 'updateMandateSettings']);
+        Route::put('/payments/mandates/settings/{id}/primary', [PaymentController::class, 'setPrimaryMandateAccount']);
+        Route::post('/payments/mandates/initiate',  [PaymentController::class, 'initiateMandate']);
 
         // Virtual Accounts
         Route::apiResource('/virtual-accounts', VirtualAccountController::class)->except(['update']);

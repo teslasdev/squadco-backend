@@ -37,7 +37,7 @@ return [
 
     'squad' => [
         'api_key'        => env('SQUAD_API_KEY'),
-        'base_url'       => env('SQUAD_BASE_URL', 'https://api-d.squadco.com'),
+        'base_url'       => env('SQUAD_BASE_URL'),
         'webhook_secret' => env('SQUAD_WEBHOOK_SECRET'),
     ],
 

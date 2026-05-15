@@ -25,12 +25,19 @@ class Settlement extends Model
     protected $fillable = [
         'mda_id', 'cycle_id', 'total_disbursed', 'total_blocked',
         'squad_batch_id', 'status', 'settled_at',
+        'mandate_transaction_reference', 'mandate_id',
+        'mandate_status', 'mandate_ready_to_debit',
+        'mandate_last_event', 'mandate_last_payload',
+        'mandate_debit_reference', 'mandate_debited_at',
     ];
 
     protected $casts = [
         'settled_at' => 'datetime',
         'total_disbursed' => 'decimal:2',
         'total_blocked' => 'decimal:2',
+        'mandate_ready_to_debit' => 'boolean',
+        'mandate_last_payload' => 'array',
+        'mandate_debited_at' => 'datetime',
     ];
 
     public function mda()

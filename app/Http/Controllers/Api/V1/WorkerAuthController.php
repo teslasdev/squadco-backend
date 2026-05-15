@@ -17,16 +17,22 @@ use Illuminate\Validation\ValidationException;
  *   GET  /v1/workers-portal/me            — authenticated worker (Sanctum 'worker' guard)
  *   POST /v1/workers-portal/auth/logout   — revoke current token
  *
- * Activation flow:
- *   1. Admin activates a worker via /workers/{id}/activate. The activation
- *      controller generates an `activation_code` and stamps `activation_code_issued_at`.
- *   2. Admin gives the worker the code (printed, QR, SMS — frontend choice).
- *   3. Worker visits /workers/signup, enters: code + email + password.
- *      - Code must match a worker row, be unused, and be < 14 days old.
- *      - Email must match the worker row (case-insensitive).
- *      - On success: password is hashed, code is consumed (set to NULL),
- *        `account_created_at` is timestamped, a token is issued.
- *   4. Future logins use /workers/login with just email + password.
+ * Signup is the FIRST thing a worker does — before self-enrolment. Two ways
+ * in, both resolve to the same worker row and the same outcome:
+ *
+ *   A) onboarding_token (primary — the QR/link an admin shares right after
+ *      onboarding). Worker is still `pending_self_enrol`; signup just claims
+ *      the account + sets a password, then the worker continues into the
+ *      self-enrol wizard. Status is NOT changed here — the admin-review gate
+ *      lives AFTER self-enrol (worker → pending_review → admin → active).
+ *
+ *   B) activation_code (fallback — admin reissues an 8-char code when a
+ *      worker lost access / needs a password reset on an already-active
+ *      account). Original behaviour, kept intact.
+ *
+ * In both cases email must match the worker record (case-insensitive,
+ * anti-hijack) and `account_created_at` must be null (not already claimed).
+ * Future logins use /workers/login with just email + password.
  */
 class WorkerAuthController extends Controller
 {
@@ -36,23 +42,45 @@ class WorkerAuthController extends Controller
     public function signup(Request $request)
     {
         $data = $request->validate([
-            'activation_code' => ['required', 'string', 'size:8'],
-            'email'           => ['required', 'email'],
-            'password'        => ['required', 'string', 'min:8', 'confirmed'],
+            // Exactly one of these identifies the worker. onboarding_token is
+            // the primary QR-link path; activation_code is the admin-reissue
+            // fallback. required_without_all makes the API reject a request
+            // that supplies neither, with a clear message.
+            'onboarding_token' => ['required_without_all:activation_code', 'string'],
+            'activation_code'  => ['required_without_all:onboarding_token', 'string', 'size:8'],
+            'email'            => ['required', 'email'],
+            'password'         => ['required', 'string', 'min:8', 'confirmed'],
         ]);
 
-        $worker = Worker::where('activation_code', strtoupper($data['activation_code']))
-            ->whereNull('account_created_at')
-            ->first();
+        $usingToken = filled($data['onboarding_token'] ?? null);
+
+        // Resolve the worker by whichever identifier was supplied. Both keys
+        // additionally require the account to be unclaimed.
+        $worker = $usingToken
+            ? Worker::where('onboarding_token', $data['onboarding_token'])
+                ->whereNull('account_created_at')
+                ->first()
+            : Worker::where('activation_code', strtoupper($data['activation_code']))
+                ->whereNull('account_created_at')
+                ->first();
+
+        // Field the message attaches to drives which input the frontend
+        // highlights, so keep it aligned with the path that was used.
+        $idField = $usingToken ? 'onboarding_token' : 'activation_code';
 
         if (!$worker) {
             throw ValidationException::withMessages([
-                'activation_code' => 'Invalid or already-used activation code.',
+                $idField => $usingToken
+                    ? 'This enrolment link is invalid or the account is already claimed.'
+                    : 'Invalid or already-used activation code.',
             ]);
         }
 
-        // 14-day expiry
+        // Activation codes expire after 14 days. The onboarding token does
+        // not expire on its own — it dies when the worker completes/abandons
+        // self-enrol, which is governed elsewhere.
         if (
+            !$usingToken &&
             $worker->activation_code_issued_at &&
             $worker->activation_code_issued_at->lt(now()->subDays(14))
         ) {
@@ -67,7 +95,17 @@ class WorkerAuthController extends Controller
             ]);
         }
 
-        if ($worker->status !== 'active') {
+        // Token path: the worker is still `pending_self_enrol` and that's
+        // expected — signup precedes enrolment. We only block if they're in a
+        // dead state (rejected). Code path: keep the original `active` gate
+        // (a reissued code only makes sense for an already-active worker).
+        if ($usingToken) {
+            if (!in_array($worker->status, ['pending_self_enrol', 'pending_review', 'active'], true)) {
+                throw ValidationException::withMessages([
+                    'onboarding_token' => "This account cannot be claimed (status: {$worker->status}). Contact your administrator.",
+                ]);
+            }
+        } elseif ($worker->status !== 'active') {
             throw ValidationException::withMessages([
                 'activation_code' => 'Worker account is not active. Contact your administrator.',
             ]);
@@ -75,18 +113,26 @@ class WorkerAuthController extends Controller
 
         $worker->update([
             'password'                  => $data['password'],
-            'activation_code'           => null,
-            'activation_code_issued_at' => null,
+            // Consume the code if one was used; leave onboarding_token alone
+            // so the worker can still resume self-enrol with it after signup.
+            'activation_code'           => $usingToken ? $worker->activation_code : null,
+            'activation_code_issued_at' => $usingToken ? $worker->activation_code_issued_at : null,
             'account_created_at'        => now(),
             'last_login_at'             => now(),
         ]);
 
         $token = $worker->createToken('worker-portal')->plainTextToken;
 
+        // Tell the frontend whether enrolment still needs doing so it can
+        // route into the wizard vs. straight to the dashboard.
+        $needsSelfEnrol = $worker->status === 'pending_self_enrol';
+
         return $this->successResponse([
-            'access_token' => $token,
-            'token_type'   => 'Bearer',
-            'worker'       => $this->workerPayload($worker),
+            'access_token'     => $token,
+            'token_type'       => 'Bearer',
+            'needs_self_enrol' => $needsSelfEnrol,
+            'onboarding_token' => $worker->onboarding_token,
+            'worker'           => $this->workerPayload($worker),
         ], 'Account created. You are signed in.');
     }
 
@@ -108,8 +154,17 @@ class WorkerAuthController extends Controller
             return $this->errorResponse('Invalid email or password.', 401);
         }
 
-        if ($worker->status !== 'active') {
-            return $this->errorResponse('Your account is currently inactive. Contact your administrator.', 403);
+        // Password-first flow: a worker has a real account (password set) the
+        // moment they sign up, but stays pending_self_enrol → pending_review
+        // until an admin approves. They must be able to log in through those
+        // states so the dashboard can show them their progress / status.
+        // Only genuinely dead accounts are refused here.
+        $blockedStatuses = ['rejected', 'blocked', 'suspended'];
+        if (in_array($worker->status, $blockedStatuses, true)) {
+            return $this->errorResponse(
+                'Your account is not active. Contact your MDA administrator.',
+                403
+            );
         }
 
         $worker->update(['last_login_at' => now()]);
@@ -157,6 +212,12 @@ class WorkerAuthController extends Controller
             'email'               => $worker->email,
             'phone'               => $worker->phone,
             'status'              => $worker->status,
+            // Exposed only while self-enrol is still outstanding so the
+            // dashboard can deep-link the worker back into the wizard. Null
+            // once they're past pending_self_enrol — no longer needed.
+            'onboarding_token'    => $worker->status === 'pending_self_enrol'
+                ? $worker->onboarding_token
+                : null,
             'job_title'           => $worker->job_title,
             'grade_level'         => $worker->grade_level,
             'step'                => $worker->step,

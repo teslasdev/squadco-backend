@@ -91,6 +91,10 @@ class OnboardingController extends Controller
         // same origin in this project (Vite at :5173 proxies API calls to
         // Laravel) so APP_URL=http://localhost:5173 is the right value.
         $appUrl = rtrim((string) config('app.url', 'http://localhost:5173'), '/');
+        // signup_url is what the QR/share link now points at: the worker sets
+        // a password FIRST, then continues into self-enrol. self_enrol_url is
+        // kept for the kiosk/admin path and for resuming enrol directly.
+        $signupUrl    = $appUrl . '/workers/signup?token=' . $worker->onboarding_token;
         $selfEnrolUrl = $appUrl . '/self-enrol/' . $worker->onboarding_token;
 
         return $this->successResponse([
@@ -100,8 +104,9 @@ class OnboardingController extends Controller
             'onboarding_token'  => $worker->onboarding_token,
             'onboarding_status' => $worker->onboarding_status,
             'status'            => $worker->status,
+            'signup_url'        => $signupUrl,
             'self_enrol_url'    => $selfEnrolUrl,
-        ], 'Worker enrolled. Share the self-enrol link with them to complete their profile.', 201);
+        ], 'Worker enrolled. Share the signup link with them to set a password and complete their profile.', 201);
     }
 
     /**

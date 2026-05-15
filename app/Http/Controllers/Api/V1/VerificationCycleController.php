@@ -156,12 +156,22 @@ class VerificationCycleController extends Controller
     )]
     public function run(Request $request, int $id): JsonResponse
     {
+        // Atomic dedupe: flip status to `running` in a single UPDATE and only
+        // dispatch if the row was actually changed. Two concurrent calls land
+        // on the same row; only the one that wins the UPDATE proceeds. This
+        // protects against StrictMode double-fires from the frontend and any
+        // accidental double-click on the Run button.
         $cycle = VerificationCycle::findOrFail($id);
 
-        if ($cycle->status === 'running') {
-            return $this->errorResponse('Cycle is already running.', 409);
+        $updated = VerificationCycle::where('id', $id)
+            ->whereIn('status', ['pending', 'completed', 'failed'])
+            ->update(['status' => 'running']);
+
+        if ($updated === 0) {
+            return $this->errorResponse('Cycle is already running or not in a runnable state.', 409);
         }
 
+        $cycle->refresh();
         RunVerificationCycleJob::dispatch($cycle);
         $this->audit->log('cycle_run_dispatched', 'VerificationCycle', $id, [], [], $request);
 

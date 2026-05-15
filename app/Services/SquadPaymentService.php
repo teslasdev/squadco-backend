@@ -79,15 +79,19 @@ class SquadPaymentService
     }
 
     /**
-     * Verify a Squad webhook signature using HMAC-SHA512.
+     * Verify Squad's x-squad-encrypted-body webhook signature using HMAC-SHA512.
      */
     public function verifyWebhookSignature(string $payload, string $signature): bool
     {
-        $secret = config('services.squad.webhook_secret', '');
-        if (empty($secret)) return false;
+        $secret = (string) (config('services.squad.webhook_secret') ?: config('services.squad.api_key', ''));
+        $signature = trim($signature);
+
+        if ($secret === '' || $signature === '') {
+            return false;
+        }
 
         $expected = hash_hmac('sha512', $payload, $secret);
-        return hash_equals($expected, strtolower($signature));
+        return hash_equals(strtolower($expected), strtolower($signature));
     }
 
     /**

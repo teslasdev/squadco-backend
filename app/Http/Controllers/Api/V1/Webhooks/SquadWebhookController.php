@@ -25,7 +25,7 @@ class SquadWebhookController extends Controller
         summary: 'Receive Squad payment webhook events',
         description: 'HMAC-validated endpoint. Squad sends `transaction.successful`, `transaction.failed`, and `transaction.reversed` events.',
         parameters: [
-            new OA\Parameter(name: 'x-squad-signature', in: 'header', required: true, schema: new OA\Schema(type: 'string'), description: 'HMAC-SHA512 signature from Squad'),
+            new OA\Parameter(name: 'x-squad-encrypted-body', in: 'header', required: true, schema: new OA\Schema(type: 'string'), description: 'HMAC-SHA512 signature of the raw request payload from Squad'),
         ],
         requestBody: new OA\RequestBody(
             required: true,
@@ -48,7 +48,8 @@ class SquadWebhookController extends Controller
     public function handle(Request $request): JsonResponse
     {
         $payload   = $request->getContent();
-        $signature = $request->header('x-squad-signature', '');
+        $signature = $request->header('x-squad-encrypted-body')
+            ?: $request->header('x-squad-signature', '');
 
         if (!$this->squad->verifyWebhookSignature($payload, $signature)) {
             return $this->errorResponse('Invalid webhook signature.', 401);

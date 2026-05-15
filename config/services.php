@@ -38,7 +38,7 @@ return [
     'squad' => [
         'api_key'        => env('SQUAD_API_KEY'),
         'base_url'       => env('SQUAD_BASE_URL'),
-        'webhook_secret' => env('SQUAD_WEBHOOK_SECRET'),
+        'webhook_secret' => env('SQUAD_WEBHOOK_SECRET', env('SQUAD_API_KEY')),
     ],
 
     'ai_verification' => [

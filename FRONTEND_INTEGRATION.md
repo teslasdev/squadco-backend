@@ -966,7 +966,7 @@ Then **Approve** / **Reject** buttons.
 ### Public (no auth)
 | Method | Path |
 |---|---|
-| `POST` | `/webhooks/squad` (HMAC validated inside controller) |
+| `POST` | `/webhooks/squad` (`x-squad-encrypted-body` HMAC validated inside controller) |
 | `POST` | `/webhooks/vapi` (X-Vapi-Secret header validated inside controller) |
 | `GET`  | `/onboarding/resume/{token}` |
 | `POST` | `/auth/login` |

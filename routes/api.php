@@ -24,6 +24,7 @@ use App\Http\Controllers\Api\V1\{
     SettingsController,
     UserController,
     OnboardingController,
+    WorkerFaceVerificationController,
 };
 use App\Http\Controllers\Api\V1\Webhooks\SquadWebhookController;
 use App\Http\Controllers\Api\V1\Webhooks\VapiWebhookController;
@@ -89,6 +90,14 @@ Route::prefix('v1')->group(function () {
             Route::get('/my-payments',       [WorkerAuthController::class, 'myPayments']);
             Route::get('/my-verifications',  [WorkerAuthController::class, 'myVerifications']);
             Route::post('/auth/logout',      [WorkerAuthController::class, 'logout']);
+
+            // Worker self-serve face verification (3-frame). Mirrors the admin
+            // face flow but scoped to the authed worker's own session.
+            Route::post('/face-verification/start',              [WorkerFaceVerificationController::class, 'start']);
+            Route::post('/face-verification/{session_id}/frame1', [WorkerFaceVerificationController::class, 'frame1']);
+            Route::post('/face-verification/{session_id}/frame2', [WorkerFaceVerificationController::class, 'frame2']);
+            Route::post('/face-verification/{session_id}/frame3', [WorkerFaceVerificationController::class, 'frame3']);
+            Route::get('/face-verification/{session_id}',         [WorkerFaceVerificationController::class, 'show']);
         });
     });
 

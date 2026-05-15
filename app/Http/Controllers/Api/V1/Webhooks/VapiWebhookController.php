@@ -60,6 +60,10 @@ class VapiWebhookController extends Controller
             ?? data_get($payload, 'message.artifact.recordingUrl');
         $workerId     = isset($metadata['worker_id']) ? (int) $metadata['worker_id'] : null;
         $intent       = $metadata['intent'] ?? null;
+        // Set when the call was dispatched by a verification cycle so the
+        // resulting Verification attaches to that cycle (not the ad-hoc
+        // "Vapi Continuous" bucket used for one-off verify-voice calls).
+        $cycleId      = isset($metadata['cycle_id']) ? (int) $metadata['cycle_id'] : null;
 
         // Capture call metadata we want to audit on the verification row.
         $callMeta = [
@@ -95,13 +99,14 @@ class VapiWebhookController extends Controller
             return $this->absorb('unsupported_intent', $worker->id, ['intent' => $intent]);
         }
 
-        return $this->handleVerify($worker, $recordingUrl, $callMeta);
+        return $this->handleVerify($worker, $recordingUrl, $callMeta, $cycleId);
     }
 
     /**
      * @param array{call_id: ?string, cost: ?float, transcript: ?string} $callMeta
+     * @param int|null $cycleId Cycle that dispatched this call, if any.
      */
-    private function handleVerify(Worker $worker, string $recordingUrl, array $callMeta): JsonResponse
+    private function handleVerify(Worker $worker, string $recordingUrl, array $callMeta, ?int $cycleId = null): JsonResponse
     {
         if (!$worker->voice_enrolled || empty($worker->voice_embedding_ecapa) || empty($worker->voice_embedding_campplus)) {
             $this->audit->log('vapi_verify_not_enrolled', 'Worker', $worker->id, [], []);
@@ -136,14 +141,19 @@ class VapiWebhookController extends Controller
         }
 
         $data = $result['data'] ?? [];
-        $cycle = VerificationCycle::firstOrCreate(
-            ['name' => 'Vapi Continuous'],
-            [
-                'cycle_month' => now()->startOfMonth()->toDateString(),
-                'status'      => 'running',
-                'started_at'  => now(),
-            ]
-        );
+
+        // Cycle-dispatched calls carry their cycle_id in metadata — attach the
+        // result to that cycle so its tallies are accurate. One-off
+        // verify-voice calls (no cycle_id) keep landing in "Vapi Continuous".
+        $cycle = ($cycleId ? VerificationCycle::find($cycleId) : null)
+            ?? VerificationCycle::firstOrCreate(
+                ['name' => 'Vapi Continuous'],
+                [
+                    'cycle_month' => now()->startOfMonth()->toDateString(),
+                    'status'      => 'running',
+                    'started_at'  => now(),
+                ]
+            );
 
         $verification = Verification::create([
             'worker_id'                => $worker->id,

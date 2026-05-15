@@ -278,8 +278,23 @@ class WorkerAuthController extends Controller
             ];
         }
 
-        // Active worker who has never been verified → first verification pending.
-        if ($worker->status === 'active' && $verifications->isEmpty()) {
+        // A verification cycle seeds a PENDING row (verdict NULL, verified_at
+        // NULL) for web workers. Surface it as an actionable task that deep-
+        // links into the worker's self-serve face check.
+        $hasPending = $verifications->contains(
+            fn ($v) => $v->verdict === null && $v->verified_at === null
+        );
+
+        if ($hasPending) {
+            $tasks[] = [
+                'key'      => 'face_verification_due',
+                'title'    => 'Face verification due',
+                'detail'   => 'A payroll verification is waiting. Complete a quick face check to confirm your identity and keep your salary on track.',
+                'severity' => 'action',
+                'cta'      => '/workers/face-verification',
+            ];
+        } elseif ($worker->status === 'active' && $verifications->isEmpty()) {
+            // Active worker who has never been verified → first one is pending.
             $tasks[] = [
                 'key'      => 'first_verification_pending',
                 'title'    => 'First verification pending',

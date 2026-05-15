@@ -5,6 +5,7 @@ namespace App\Http\Controllers\Api\V1;
 use App\Http\Controllers\Controller;
 use App\Models\Setting;
 use App\Models\VerificationCycle;
+use App\Models\Worker;
 use App\Jobs\RunVerificationCycleJob;
 use App\Services\AuditService;
 use Illuminate\Http\Request;
@@ -24,9 +25,38 @@ class VerificationCycleController extends Controller
         security: [['bearerAuth' => []]],
         responses: [new OA\Response(response: 200, description: 'Paginated cycles')]
     )]
+    /**
+     * Internal fallback cycles created by the webhook / ad-hoc face flow when
+     * a result has no real cycle to attach to. They are NOT payroll cycles
+     * and must never be a "Run cycle" target (running them would dispatch the
+     * whole roster against a bucket that's perpetually `running`).
+     */
+    private const FALLBACK_CYCLE_NAMES = ['Vapi Continuous', 'Continuous'];
+
     public function index(): JsonResponse
     {
-        return $this->successResponse(VerificationCycle::with('creator')->latest()->paginate(20));
+        $paginator = VerificationCycle::with('creator')
+            ->whereNotIn('name', self::FALLBACK_CYCLE_NAMES)
+            ->latest()
+            ->paginate(20);
+
+        // Overlay live counts so the dashboard never shows stale tallies for
+        // an in-flight async cycle. syncCompletion() is idempotent.
+        $paginator->getCollection()->transform(function (VerificationCycle $cycle) {
+            $cycle->syncCompletion();
+            $stats = $cycle->liveStats();
+            $cycle->verified_count     = $stats['verified'];
+            $cycle->failed_count       = $stats['failed'];
+            $cycle->inconclusive_count = $stats['inconclusive'];
+            if ($stats['total'] > (int) $cycle->total_workers) {
+                $cycle->total_workers = $stats['total'];
+            }
+            $cycle->setAttribute('pending_count', $stats['pending']);
+            $cycle->setAttribute('resolved_count', $stats['resolved']);
+            return $cycle;
+        });
+
+        return $this->successResponse($paginator);
     }
 
     #[OA\Get(
@@ -139,7 +169,19 @@ class VerificationCycleController extends Controller
     )]
     public function show(int $id): JsonResponse
     {
-        return $this->successResponse(VerificationCycle::with('creator')->findOrFail($id));
+        $cycle = VerificationCycle::with('creator')->findOrFail($id);
+        $cycle->syncCompletion();
+        $cycle->refresh();
+        $stats = $cycle->liveStats();
+        $cycle->verified_count     = $stats['verified'];
+        $cycle->failed_count       = $stats['failed'];
+        $cycle->inconclusive_count = $stats['inconclusive'];
+        if ($stats['total'] > (int) $cycle->total_workers) {
+            $cycle->total_workers = $stats['total'];
+        }
+        $cycle->setAttribute('pending_count', $stats['pending']);
+        $cycle->setAttribute('resolved_count', $stats['resolved']);
+        return $this->successResponse($cycle);
     }
 
     #[OA\Post(
@@ -163,6 +205,14 @@ class VerificationCycleController extends Controller
         // accidental double-click on the Run button.
         $cycle = VerificationCycle::findOrFail($id);
 
+        // Fallback buckets are not payroll cycles — refuse to run them.
+        if (in_array($cycle->name, self::FALLBACK_CYCLE_NAMES, true)) {
+            return $this->errorResponse(
+                'This is an internal continuous-verification bucket, not a runnable payroll cycle.',
+                422
+            );
+        }
+
         $updated = VerificationCycle::where('id', $id)
             ->whereIn('status', ['pending', 'completed', 'failed'])
             ->update(['status' => 'running']);
@@ -173,9 +223,32 @@ class VerificationCycleController extends Controller
 
         $cycle->refresh();
         RunVerificationCycleJob::dispatch($cycle);
-        $this->audit->log('cycle_run_dispatched', 'VerificationCycle', $id, [], [], $request);
 
-        return $this->successResponse([], 'Verification cycle queued.', 202);
+        // The job runs async; surface the EXPECTED scope now so the UI can
+        // message accurately ("N workers being called, M face checks queued")
+        // and size its progress bar before any results land.
+        $phoneExpected = Worker::where('status', 'active')
+            ->whereIn('verification_channel', ['phone', 'both'])
+            ->where('voice_enrolled', true)
+            ->whereNotNull('phone')
+            ->count();
+        $faceExpected = Worker::where('status', 'active')
+            ->where('verification_channel', 'web')
+            ->where('face_enrolled', true)
+            ->count();
+
+        $scope = [
+            'phone_calls'   => $phoneExpected,
+            'face_pending'  => $faceExpected,
+            'total_expected' => $phoneExpected + $faceExpected,
+        ];
+
+        $this->audit->log('cycle_run_dispatched', 'VerificationCycle', $id, [], $scope, $request);
+
+        return $this->successResponse([
+            'cycle_id' => $cycle->id,
+            'scope'    => $scope,
+        ], 'Verification cycle queued.', 202);
     }
 
     #[OA\Get(
@@ -205,17 +278,25 @@ class VerificationCycleController extends Controller
     public function summary(int $id): JsonResponse
     {
         $cycle = VerificationCycle::findOrFail($id);
+        // Async cycle: derive counts live, then write-through completion.
+        $cycle->syncCompletion();
+        $cycle->refresh();
+        $stats = $cycle->liveStats();
+        $total = max($cycle->total_workers, $stats['total']);
+
         return $this->successResponse([
-            'cycle'             => $cycle->name,
-            'status'            => $cycle->status,
-            'total_workers'     => $cycle->total_workers,
-            'verified_count'    => $cycle->verified_count,
-            'failed_count'      => $cycle->failed_count,
-            'inconclusive_count' => $cycle->inconclusive_count,
-            'payroll_released'  => $cycle->payroll_released,
-            'payroll_blocked'   => $cycle->payroll_blocked,
-            'pass_rate'         => $cycle->total_workers > 0
-                ? round(($cycle->verified_count / $cycle->total_workers) * 100, 2)
+            'cycle'              => $cycle->name,
+            'status'             => $cycle->status,
+            'total_workers'      => $total,
+            'verified_count'     => $stats['verified'],
+            'failed_count'       => $stats['failed'],
+            'inconclusive_count' => $stats['inconclusive'],
+            'pending_count'      => $stats['pending'],
+            'resolved_count'     => $stats['resolved'],
+            'payroll_released'   => $cycle->payroll_released,
+            'payroll_blocked'    => $cycle->payroll_blocked,
+            'pass_rate'          => $total > 0
+                ? round(($stats['verified'] / $total) * 100, 2)
                 : 0,
         ]);
     }

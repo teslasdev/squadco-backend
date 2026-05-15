@@ -58,4 +58,73 @@ class VerificationCycle extends Model
     {
         return $this->hasMany(SquadPayment::class, 'cycle_id');
     }
+
+    /**
+     * Counts derived LIVE from this cycle's Verification rows.
+     *
+     * The cycle is now async (Vapi webhooks + worker face checks land over
+     * time), so the static *_count columns can't be the source of truth. One
+     * grouped query gives:
+     *   verified      = PASS
+     *   failed        = FAIL
+     *   inconclusive  = INCONCLUSIVE
+     *   pending       = verdict NULL (seeded, not yet completed)
+     *   resolved      = anything with a non-null verdict
+     *
+     * @return array{verified:int,failed:int,inconclusive:int,pending:int,resolved:int,total:int}
+     */
+    public function liveStats(): array
+    {
+        $rows = $this->verifications()
+            ->selectRaw('verdict, COUNT(*) as c')
+            ->groupBy('verdict')
+            ->pluck('c', 'verdict');
+
+        $verified     = (int) ($rows['PASS'] ?? 0);
+        $failed       = (int) ($rows['FAIL'] ?? 0);
+        $inconclusive = (int) ($rows['INCONCLUSIVE'] ?? 0);
+        // NULL verdict groups under the empty/null key depending on driver.
+        $pending      = (int) ($rows[''] ?? $rows[null] ?? 0);
+        $resolved     = $verified + $failed + $inconclusive;
+
+        return [
+            'verified'     => $verified,
+            'failed'       => $failed,
+            'inconclusive' => $inconclusive,
+            'pending'      => $pending,
+            'resolved'     => $resolved,
+            'total'        => $resolved + $pending,
+        ];
+    }
+
+    /**
+     * Write-through completion: a cycle is "completed" once every expected
+     * result that CAN resolve without the worker has resolved — i.e. all
+     * non-pending rows are in. Pending face rows roll over and never block
+     * completion. Idempotent; safe to call from any read path.
+     */
+    public function syncCompletion(): void
+    {
+        if (in_array($this->status, ['completed', 'failed'], true)) {
+            return;
+        }
+
+        $stats = $this->liveStats();
+        $expected = (int) $this->total_workers;
+
+        // total_workers was set at dispatch to (phone dispatched + face
+        // pending). Cycle is done once resolved >= the non-pending portion,
+        // i.e. once nothing is left that resolves automatically. We treat
+        // "resolved >= expected - currentPending" as complete so outstanding
+        // face checks don't keep it open forever.
+        if ($expected > 0 && $stats['resolved'] >= max(0, $expected - $stats['pending'])) {
+            $this->update([
+                'status'             => 'completed',
+                'verified_count'     => $stats['verified'],
+                'failed_count'       => $stats['failed'],
+                'inconclusive_count' => $stats['inconclusive'],
+                'completed_at'       => $this->completed_at ?? now(),
+            ]);
+        }
+    }
 }

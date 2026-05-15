@@ -466,11 +466,38 @@ class FaceVerificationController extends Controller
     }
 
     /**
-     * Persists a Verification row mirroring the voice-channel flow, mapping
-     * the face score to face_liveness_score.
+     * Records the face verification result.
+     *
+     * If a cycle seeded a PENDING row for this worker (verdict NULL,
+     * verified_at NULL — see RunVerificationCycleJob), we FILL THAT ROW IN so
+     * the completion attaches to the cycle that requested it and the cycle's
+     * tallies are accurate. Otherwise (ad-hoc admin check with no pending
+     * cycle row) we create a fresh row on the "Continuous" cycle as before.
      */
     private function writeVerification(Worker $worker, FaceVerificationSession $session, int $score, string $verdict, ?string $failureReason): Verification
     {
+        $pending = Verification::where('worker_id', $worker->id)
+            ->whereNull('verdict')
+            ->whereNull('verified_at')
+            ->latest('id')
+            ->first();
+
+        if ($pending) {
+            $pending->update([
+                'channel'                  => 'app',
+                'trust_score'              => $score,
+                'verdict'                  => $verdict,
+                'face_liveness_score'      => $score,
+                'speaker_biometric_score'  => null,
+                'anti_spoof_score'         => null,
+                'challenge_response_score' => null,
+                'replay_detection_score'   => null,
+                'latency_ms'               => $session->latency_ms,
+                'verified_at'              => now(),
+            ]);
+            return $pending->fresh();
+        }
+
         $cycle = VerificationCycle::firstOrCreate(
             ['name' => 'Continuous'],
             [

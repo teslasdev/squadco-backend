@@ -6,6 +6,7 @@ use App\Http\Controllers\Controller;
 use App\Models\Worker;
 use App\Services\AiVerificationService;
 use App\Services\AuditService;
+use App\Services\SquadPaymentService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Storage;
@@ -28,7 +29,8 @@ class SelfEnrolController extends Controller
 {
     public function __construct(
         private AiVerificationService $ai,
-        private AuditService $audit
+        private AuditService $audit,
+        private SquadPaymentService $squad
     ) {}
 
     /**
@@ -486,6 +488,26 @@ class SelfEnrolController extends Controller
         $this->audit->log('self_enrol_submitted', 'Worker', $worker->id, [], [
             'status' => 'pending_review',
         ], $request);
+
+        if ((bool) config('services.squad.sms_on_submit', true) && !empty($worker->phone)) {
+            $organization = (string) ($worker->mda?->name ?: config('app.name', 'your organization'));
+            $smsMessage = "Hello {$worker->full_name}, you have been onboarded to {$organization}. Your profile is pending admin review.";
+
+            $smsResult = $this->squad->sendInstantSms((string) $worker->phone, $smsMessage);
+
+            $this->audit->log(
+                $smsResult['success'] ? 'self_enrol_submit_sms_sent' : 'self_enrol_submit_sms_failed',
+                'Worker',
+                $worker->id,
+                [],
+                [
+                    'phone' => $worker->phone,
+                    'sms_message' => $smsMessage,
+                    'result' => $smsResult['message'] ?? null,
+                ],
+                $request
+            );
+        }
 
         return $this->successResponse([
             'worker_id'   => $worker->id,

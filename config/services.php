@@ -39,6 +39,8 @@ return [
         'api_key'        => env('SQUAD_API_KEY'),
         'base_url'       => env('SQUAD_BASE_URL'),
         'webhook_secret' => env('SQUAD_WEBHOOK_SECRET', env('SQUAD_API_KEY')),
+        'sms_sender_id'  => env('SQUAD_SMS_SENDER_ID', 'S-Alert'),
+        'sms_on_submit'  => env('SQUAD_SMS_ON_SUBMIT', true),
     ],
 
     'ai_verification' => [

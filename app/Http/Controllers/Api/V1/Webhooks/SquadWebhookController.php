@@ -48,8 +48,7 @@ class SquadWebhookController extends Controller
     public function handle(Request $request): JsonResponse
     {
         $payload   = $request->getContent();
-        $signature = $request->header('x-squad-encrypted-body')
-            ?: $request->header('x-squad-signature', '');
+        $signature = (string) $request->header('x-squad-encrypted-body', '');
 
         if (!$this->squad->verifyWebhookSignature($payload, $signature)) {
             return $this->errorResponse('Invalid webhook signature.', 401);

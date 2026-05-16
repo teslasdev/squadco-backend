@@ -61,6 +61,10 @@ Route::prefix('v1')->group(function () {
         Route::post('/{token}/submit',     [SelfEnrolController::class, 'submit']);
     });
 
+    // ─── Public: Payment account lookup (can be called with or without auth) ─
+    Route::post('/payments/lookup', [PaymentController::class, 'verifyPaymentDetails'])->middleware('throttle:60,1');
+    Route::post('/payment/account/lookup', [PaymentController::class, 'verifyPaymentDetails'])->middleware('throttle:60,1');
+
     // ─── Auth (admin) ─────────────────────────────────────────────────────────
     Route::prefix('auth')->group(function () {
         Route::post('/login', [AuthController::class, 'login'])->middleware('throttle:10,1');
@@ -195,7 +199,6 @@ Route::prefix('v1')->group(function () {
         Route::get('/payments/{id}',                [PaymentController::class, 'show']);
         Route::post('/payments/release',            [PaymentController::class, 'release']);
         Route::post('/payments/block/{worker_id}',  [PaymentController::class, 'blockWorker']);
-        Route::post('/payments/lookup',              [PaymentController::class, 'verifyPaymentDetails']);
         Route::get('/payments/mandates/banks',      [PaymentController::class, 'mandateBanks']);
         Route::get('/payments/mandates/settings',   [PaymentController::class, 'mandateSettings']);
         Route::put('/payments/mandates/settings',   [PaymentController::class, 'updateMandateSettings']);

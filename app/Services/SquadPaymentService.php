@@ -90,8 +90,8 @@ class SquadPaymentService
             return false;
         }
 
-        $expected = hash_hmac('sha512', $payload, $secret);
-        return hash_equals(strtolower($expected), strtolower($signature));
+        $expected = strtoupper(hash_hmac('sha512', $payload, $secret));
+        return hash_equals($expected, strtoupper($signature));
     }
 
     /**
@@ -233,6 +233,49 @@ class SquadPaymentService
             return [
                 'success' => false,
                 'reference' => $payload['transaction_reference'] ?? null,
+                'message' => $e->getMessage(),
+                'raw' => [],
+            ];
+        }
+    }
+
+    /**
+     * Send instant SMS via Squad.
+     * Payload format follows Squad: sender_id + messages[{phone_number, message}].
+     */
+    public function sendInstantSms(string $phoneNumber, string $message, ?string $senderId = null): array
+    {
+        $senderId = $senderId ?: (string) config('services.squad.sms_sender_id', 'S-Alert');
+
+        try {
+            $response = Http::withToken($this->apiKey)
+                ->acceptJson()
+                ->post("{$this->baseUrl}/sms/send/instant", [
+                    'sender_id' => $senderId,
+                    'messages' => [[
+                        'phone_number' => $phoneNumber,
+                        'message' => $message,
+                    ]],
+                ]);
+
+            $data = $response->json() ?? [];
+
+            if ($response->successful()) {
+                return [
+                    'success' => true,
+                    'message' => $data['message'] ?? 'SMS sent.',
+                    'raw' => $data,
+                ];
+            }
+
+            return [
+                'success' => false,
+                'message' => $data['message'] ?? 'Squad SMS API error',
+                'raw' => $data,
+            ];
+        } catch (\Throwable $e) {
+            return [
+                'success' => false,
                 'message' => $e->getMessage(),
                 'raw' => [],
             ];

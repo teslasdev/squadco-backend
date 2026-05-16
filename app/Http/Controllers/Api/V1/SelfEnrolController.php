@@ -322,12 +322,11 @@ class SelfEnrolController extends Controller
         if (data_get($quality, 'face_detected') === false) {
             $reasons[] = 'no clear face detected';
         }
-        if (data_get($quality, 'blur_ok') === false) {
-            $reasons[] = 'image is too blurry';
-        }
-        if (data_get($quality, 'brightness_ok') === false) {
-            $reasons[] = 'lighting is too dark';
-        }
+        // Blur / brightness gates removed: they were false-rejecting genuine
+        // captures (blur_ok / brightness_ok reported by the biased quality
+        // model) and blocking legitimate enrolments. Identity similarity +
+        // the pose-turn liveness checks below are what actually decide a
+        // sound enrolment template — not these heuristic quality flags.
         $conf    = data_get($quality, 'confidence');
         $minConf = (float) config('services.ai_verification.enrol_min_face_confidence', 0.80);
         if ($conf !== null && (float) $conf < $minConf) {
@@ -348,8 +347,8 @@ class SelfEnrolController extends Controller
             ], $request);
 
             return $this->errorResponse(
-                'Face capture quality too low for enrolment — please retake in good, even lighting, '
-                . 'facing the camera directly, with a sharp (non-blurry) image.',
+                'Face enrolment could not be accepted: ' . implode('; ', $reasons)
+                . '. Please retake facing the camera directly.',
                 422,
                 [
                     'reasons'    => $reasons,

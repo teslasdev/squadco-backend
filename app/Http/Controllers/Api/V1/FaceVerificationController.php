@@ -509,12 +509,21 @@ class FaceVerificationController extends Controller
             ->latest('id')
             ->first();
 
+        // Raw face identity match (~94 for a strong match) — kept SEPARATE
+        // from the verdict sentinel so the dashboard can show real identity
+        // confidence while liveness/verdict stay independent gates.
+        $identityScore = $session->identity_layer_score
+            ?? ($session->identity_similarity !== null
+                ? (int) round(((float) $session->identity_similarity) * 100)
+                : null);
+
         if ($pending) {
             $pending->update([
                 'channel'                  => 'app',
                 'trust_score'              => $score,
                 'verdict'                  => $verdict,
                 'face_liveness_score'      => $score,
+                'face_identity_score'      => $identityScore,
                 'speaker_biometric_score'  => null,
                 'anti_spoof_score'         => null,
                 'challenge_response_score' => null,
@@ -551,6 +560,7 @@ class FaceVerificationController extends Controller
             'trust_score'              => $score,
             'verdict'                  => $verdict,
             'face_liveness_score'      => $score,
+            'face_identity_score'      => $identityScore,
             'speaker_biometric_score'  => null,
             'anti_spoof_score'         => null,
             'challenge_response_score' => null,

@@ -33,7 +33,8 @@ class Verification extends Model
     protected $fillable = [
         'worker_id', 'cycle_id', 'channel', 'trust_score', 'verdict',
         'challenge_response_score', 'speaker_biometric_score', 'anti_spoof_score',
-        'replay_detection_score', 'face_liveness_score', 'latency_ms', 'language',
+        'replay_detection_score', 'face_liveness_score', 'face_identity_score',
+        'latency_ms', 'language',
         'salary_released', 'squad_reference', 'verified_at',
         'recording_url', 'vapi_call_id', 'call_cost', 'transcript',
     ];

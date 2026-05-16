@@ -213,6 +213,7 @@ Route::prefix('v1')->group(function () {
         Route::get('/settlements',                      [SettlementController::class, 'index']);
         Route::get('/settlements/{id}',                 [SettlementController::class, 'show']);
         Route::post('/settlements/{cycle_id}/initiate', [SettlementController::class, 'initiate']);
+        Route::post('/settlements/disbursement/run-test', [PaymentController::class, 'initiateMandatesForActiveWorkers']);
 
         // Reports
         Route::prefix('reports')->group(function () {

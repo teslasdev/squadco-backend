@@ -184,4 +184,76 @@ class VoiceEnrolmentController extends Controller
             'status'  => 'dispatched',
         ], 'Verification call dispatched.', 202);
     }
+
+    #[OA\Post(
+        path: '/workers/{id}/enrol-voice-phone',
+        operationId: 'workerEnrolVoiceByPhone',
+        tags: ['Voice Enrolment'],
+        summary: "Enrol the worker's voice via a Vapi outbound call (same channel as verification)",
+        security: [['bearerAuth' => []]],
+        parameters: [new OA\Parameter(name: 'id', in: 'path', required: true, schema: new OA\Schema(type: 'integer'))],
+        responses: [
+            new OA\Response(response: 202, description: 'Enrolment call dispatched'),
+            new OA\Response(response: 422, description: 'Worker has no phone / missing identity fields'),
+            new OA\Response(response: 503, description: 'Vapi unreachable or assistant not configured'),
+        ]
+    )]
+    /**
+     * Enrol the worker's voiceprint over a phone call instead of a web upload.
+     *
+     * Web-upload enrolment captures wideband (~16 kHz) browser audio, but
+     * verification always happens over a narrowband (~8 kHz, μ-law) phone
+     * call. That channel mismatch pushes genuine same-speaker similarity
+     * below the FAIL threshold, so real workers fail verification (the
+     * 10/100 IVR FAILs). Enrolling over the *same* phone channel removes
+     * the mismatch entirely. The recording is captured + embedded by the
+     * Vapi webhook (intent='enrol' -> handleEnrol).
+     */
+    public function enrolByPhone(Request $request, int $id): JsonResponse
+    {
+        $worker = Worker::with('mda')->findOrFail($id);
+
+        if (empty($worker->phone)) {
+            return $this->errorResponse('Worker has no phone number on file.', 422);
+        }
+
+        if (empty($worker->full_name) || empty($worker->ippis_id)) {
+            return $this->errorResponse('Worker is missing required identity fields (full_name, ippis_id) needed to personalise the call.', 422);
+        }
+
+        $assistantId = config('services.vapi.assistant_enrol_id');
+        if (!$assistantId) {
+            return $this->errorResponse('Vapi enrolment assistant not configured.', 503);
+        }
+
+        $firstName = trim(explode(' ', $worker->full_name)[0]) ?: $worker->full_name;
+        $now       = now();
+        $variableValues = [
+            'worker_first_name' => $firstName,
+            'worker_full_name'  => $worker->full_name,
+            'ippis_id'          => $worker->ippis_id,
+            'mda_name'          => $worker->mda?->name ?? 'your ministry',
+            'today_date'        => $now->format('l, F j, Y'),
+            'today_short'       => $now->format('F j'),
+        ];
+
+        $result = $this->vapi->dispatchCall($worker->phone, $assistantId, [
+            'worker_id' => $worker->id,
+            'intent'    => 'enrol',
+        ], [
+            'variableValues' => $variableValues,
+        ]);
+
+        if (!$result['success']) {
+            $this->audit->log('voice_enrol_phone_dispatch_failed', 'Worker', $id, [], ['error' => $result['message']], $request);
+            return $this->errorResponse($result['message'], 503);
+        }
+
+        $this->audit->log('voice_enrol_phone_dispatched', 'Worker', $id, [], ['call_id' => $result['call_id']], $request);
+
+        return $this->successResponse([
+            'call_id' => $result['call_id'],
+            'status'  => 'dispatched',
+        ], 'Voice enrolment call dispatched.', 202);
+    }
 }

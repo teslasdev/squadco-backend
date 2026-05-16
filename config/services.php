@@ -66,6 +66,10 @@ return [
         'webhook_secret'      => env('VAPI_WEBHOOK_SECRET'),
         'phone_number_id'     => env('VAPI_PHONE_NUMBER_ID'),
         'assistant_verify_id' => env('VAPI_ASSISTANT_VERIFY_ID'),
+        // Separate assistant for phone voice ENROLMENT (enrollment-worded
+        // script). Falls back to the verify assistant if unset so the
+        // enrol-by-phone flow still works without this configured.
+        'assistant_enrol_id'  => env('VAPI_ASSISTANT_ENROL_ID', env('VAPI_ASSISTANT_VERIFY_ID')),
     ],
 
 ];

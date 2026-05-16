@@ -95,11 +95,75 @@ class VapiWebhookController extends Controller
             return $this->successResponse(['ok' => false, 'reason' => 'unknown_worker']);
         }
 
+        if ($intent === 'enrol') {
+            return $this->handleEnrol($worker, $recordingUrl, $callMeta);
+        }
+
         if ($intent !== 'verify') {
             return $this->absorb('unsupported_intent', $worker->id, ['intent' => $intent]);
         }
 
         return $this->handleVerify($worker, $recordingUrl, $callMeta, $cycleId);
+    }
+
+    /**
+     * Phone-channel voice enrolment. Mirrors handleVerify's recording
+     * download, but calls /embed (not /verify) and stores the resulting
+     * voiceprint on the worker. Enrolling over the phone — the same channel
+     * verification uses — eliminates the web/phone mismatch that was failing
+     * genuine workers at verification.
+     *
+     * @param array{call_id: ?string, cost: ?float, transcript: ?string} $callMeta
+     */
+    private function handleEnrol(Worker $worker, string $recordingUrl, array $callMeta): JsonResponse
+    {
+        $persisted = $this->persistRecording($recordingUrl, $worker->id);
+        if (!$persisted) {
+            return $this->absorb('audio_download_failed', $worker->id, ['url' => $recordingUrl, 'intent' => 'enrol']);
+        }
+
+        [$absPath, $publicUrl] = $persisted;
+
+        $start  = microtime(true);
+        $result = $this->ai->embedVoice($absPath);
+        $latencyMs = (int) round((microtime(true) - $start) * 1000);
+
+        if (!$result['success']) {
+            $this->audit->log('vapi_enrol_ai_failed', 'Worker', $worker->id, [], [
+                'error'  => $result['message'],
+                'status' => $result['status'],
+            ]);
+            return $this->successResponse(['ok' => false, 'reason' => 'ai_failed', 'message' => $result['message']]);
+        }
+
+        $ecapa    = data_get($result, 'data.embeddings.ecapa');
+        $campplus = data_get($result, 'data.embeddings.campplus');
+
+        if (!is_array($ecapa) || !is_array($campplus)) {
+            $this->audit->log('vapi_enrol_bad_response', 'Worker', $worker->id, [], ['data' => $result['data'] ?? null]);
+            return $this->successResponse(['ok' => false, 'reason' => 'bad_ai_response']);
+        }
+
+        $worker->update([
+            'voice_template_url'       => $publicUrl,
+            'voice_embedding_ecapa'    => $ecapa,
+            'voice_embedding_campplus' => $campplus,
+            'voice_enrolled'           => true,
+        ]);
+
+        $this->audit->log('vapi_enrol_completed', 'Worker', $worker->id, [], [
+            'voice_template_url' => $publicUrl,
+            'spoof_prob'         => data_get($result, 'data.spoof_prob'),
+            'duration_sec'       => data_get($result, 'data.quality.duration_sec'),
+            'latency_ms'         => $latencyMs,
+            'call_id'            => $callMeta['call_id'],
+        ]);
+
+        return $this->successResponse([
+            'ok'             => true,
+            'voice_enrolled' => true,
+            'worker_id'      => $worker->id,
+        ], 'Voice enrolment (phone) completed.');
     }
 
     /**

@@ -69,8 +69,7 @@ class SelfEnrolController extends Controller
         $worker = $this->findWorkerByToken($token);
         if ($worker instanceof JsonResponse) return $worker;
 
-        $needsFace  = in_array($worker->verification_channel, ['web'], true);
-        $needsVoice = in_array($worker->verification_channel, ['phone'], true);
+        $needsFace = in_array($worker->verification_channel, ['web'], true);
 
         $pendingSteps = [];
         // employment (just job title — admin may have left blank)
@@ -84,9 +83,13 @@ class SelfEnrolController extends Controller
         if ($needsFace && !$worker->face_enrolled) {
             $pendingSteps[] = 'step4';
         }
-        if ($needsVoice && !$worker->voice_enrolled) {
-            $pendingSteps[] = 'step5';
-        }
+        // NOTE: phone-channel workers do NOT do a self-enrol voice step.
+        // step5 captures voice via the browser mic (wideband), but phone
+        // workers are VERIFIED over a narrowband phone call — enrolling on
+        // the wrong channel makes genuine workers fail verification. Their
+        // voiceprint is enrolled separately by an admin-triggered phone call
+        // (POST /workers/{id}/enrol-voice-phone), same channel as verify.
+        // So step5 is never a self-enrol pending step.
         // bank account (worker fills) — salary amount is set by admin before activation
         if (empty($worker->bank_account_number) || empty($worker->bank_name)) {
             $pendingSteps[] = 'bank';
@@ -427,14 +430,24 @@ class SelfEnrolController extends Controller
         $worker = $this->findWorkerByToken($token);
         if ($worker instanceof JsonResponse) return $worker;
 
-        if ($worker->verification_channel === 'web') {
+        // Voice is NOT self-enrolled via the browser for ANY channel here:
+        //  - web-channel workers don't need a voiceprint at all.
+        //  - phone-channel workers ARE verified over the phone, so their
+        //    voiceprint must be captured on the SAME phone channel (admin
+        //    triggers POST /workers/{id}/enrol-voice-phone). Web-mic
+        //    (wideband) enrolment + phone (narrowband) verify is the exact
+        //    channel mismatch that makes genuine workers fail.
+        // Either way, step5 is a no-op skip and never web-records audio.
+        if (in_array($worker->verification_channel, ['web', 'phone'], true)) {
             $worker->update(['onboarding_status' => 'step5']);
             return $this->successResponse([
                 'voice_enrolled'    => false,
                 'skipped'           => true,
-                'reason'            => 'Worker channel is web-only; voice enrolment not required.',
+                'reason'            => $worker->verification_channel === 'web'
+                    ? 'Worker channel is web-only; voice enrolment not required.'
+                    : 'Phone-channel voice is enrolled by an admin phone call, not in the browser.',
                 'onboarding_status' => $worker->onboarding_status,
-            ], 'Step 5 skipped (web-only worker).');
+            ], 'Step 5 skipped.');
         }
 
         $request->validate([
@@ -501,8 +514,9 @@ class SelfEnrolController extends Controller
         if ($worker instanceof JsonResponse) return $worker;
 
         // Check the worker has filled everything required for their channel.
-        $needsFace  = in_array($worker->verification_channel, ['web'], true);
-        $needsVoice = in_array($worker->verification_channel, ['phone'], true);
+        // Phone-channel voice is NOT a self-enrol step (enrolled later via
+        // the admin phone call — see show()), so it never gates submission.
+        $needsFace = in_array($worker->verification_channel, ['web'], true);
 
         $missing = [];
         if (empty($worker->job_title)) {
@@ -513,9 +527,6 @@ class SelfEnrolController extends Controller
         }
         if ($needsFace && !$worker->face_enrolled) {
             $missing[] = 'step4';
-        }
-        if ($needsVoice && !$worker->voice_enrolled) {
-            $missing[] = 'step5';
         }
         if (empty($worker->bank_account_number) || empty($worker->bank_name)) {
             $missing[] = 'bank';

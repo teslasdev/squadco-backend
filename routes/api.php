@@ -141,8 +141,9 @@ Route::prefix('v1')->group(function () {
         Route::post('/workers/{id}/unblock',      [WorkerController::class, 'unblock']);
 
         // Voice enrolment + verification (admin-triggered Vapi outbound calls)
-        Route::post('/workers/{id}/enrol-voice',  [VoiceEnrolmentController::class, 'enrol']);
-        Route::post('/workers/{id}/verify-voice', [VoiceEnrolmentController::class, 'verify']);
+        Route::post('/workers/{id}/enrol-voice',        [VoiceEnrolmentController::class, 'enrol']);
+        Route::post('/workers/{id}/enrol-voice-phone',  [VoiceEnrolmentController::class, 'enrolByPhone']);
+        Route::post('/workers/{id}/verify-voice',       [VoiceEnrolmentController::class, 'verify']);
 
         // Face verification (Persona-style kiosk: identity + turn right + turn left)
         Route::post('/face-verification/start',                  [FaceVerificationController::class, 'start']);

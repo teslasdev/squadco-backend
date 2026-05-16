@@ -20,22 +20,41 @@ use Illuminate\Console\Command;
 class ResetStuckCycles extends Command
 {
     protected $signature = 'cycles:reset
-                            {id? : Reset only this cycle id (otherwise all stuck ones)}
-                            {--stale=0 : Only reset cycles stuck running for at least N minutes}
-                            {--status=pending : Status to reset to (pending|failed)}
+                            {id? : Reset only this cycle id (otherwise all matching ones)}
+                            {--stale=0 : Only reset cycles stuck for at least N minutes}
+                            {--status=pending : Status to reset to (pending|completed)}
+                            {--from=running : Source status to match. Use "" to repair cycles whose status was truncated to empty}
                             {--force : Skip the production confirmation prompt}';
 
-    protected $description = 'Reset verification cycles frozen at status=running so they can be re-run';
+    protected $description = 'Reset verification cycles frozen at status=running (or repair empty-status rows) so they can be re-run';
+
+    /**
+     * The verification_cycles.status column is a MySQL ENUM defined in
+     * 2026_05_13_000105_create_verification_cycles_table.php as exactly
+     * ['pending','running','completed']. Writing anything else (e.g. 'failed')
+     * makes MySQL silently truncate it to '' and corrupt the row, so we must
+     * validate against the real ENUM before any UPDATE.
+     */
+    private const VALID_STATUSES = ['pending', 'running', 'completed'];
 
     public function handle(): int
     {
         $resetTo = $this->option('status');
-        if (! in_array($resetTo, ['pending', 'failed'], true)) {
-            $this->error("--status must be 'pending' or 'failed', got '{$resetTo}'.");
+        // Only 'pending' or 'completed' make sense as a *reset target*
+        // ('running' would just re-freeze it) — but both must be real ENUM
+        // members so we never truncate the column again.
+        if (! in_array($resetTo, ['pending', 'completed'], true)) {
+            $this->error("--status must be 'pending' or 'completed' (valid ENUM values), got '{$resetTo}'.");
             return self::FAILURE;
         }
 
-        $query = VerificationCycle::where('status', 'running');
+        $from = $this->option('from');
+        if (! in_array($from, [...self::VALID_STATUSES, ''], true)) {
+            $this->error("--from must be one of: '" . implode("', '", self::VALID_STATUSES) . "', or \"\" (truncated/empty). Got '{$from}'.");
+            return self::FAILURE;
+        }
+
+        $query = VerificationCycle::where('status', $from);
 
         if ($id = $this->argument('id')) {
             $query->where('id', (int) $id);
@@ -51,7 +70,8 @@ class ResetStuckCycles extends Command
         $cycles = $query->get(['id', 'name', 'status', 'started_at']);
 
         if ($cycles->isEmpty()) {
-            $this->info('No stuck cycles found. Nothing to do.');
+            $label = $from === '' ? 'empty/truncated' : "status='{$from}'";
+            $this->info("No cycles with {$label} found. Nothing to do.");
             return self::SUCCESS;
         }
 

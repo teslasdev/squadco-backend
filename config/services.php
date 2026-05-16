@@ -54,10 +54,13 @@ return [
         // The AI service deliberately does NOT gate enrolment quality
         // (see app/main.py: spoof_prob has known bias) — it's our call.
         'enrol_min_face_confidence' => (float) env('ENROL_MIN_FACE_CONFIDENCE', 0.80),
-        // spoof_prob is the AI authors' flagged-as-biased signal — gate it
-        // softly (high threshold) so it warns on egregious cases without
-        // blocking legitimate enrolments the way a strict 0.3 would.
-        'enrol_max_spoof_prob'      => (float) env('ENROL_MAX_SPOOF_PROB', 0.85),
+        // spoof_prob is the AI authors' flagged-as-biased signal. It false-
+        // positives hard on GENUINE live webcam faces (observed 0.98+ on a
+        // real person in good light), so a 0.85 gate blocked legitimate
+        // enrolments. Loosened to 0.99: still rejects a near-certain 1.0
+        // spoof signal, but lets real faces the biased model over-scores
+        // through. Tighten again only once the model bias is fixed upstream.
+        'enrol_max_spoof_prob'      => (float) env('ENROL_MAX_SPOOF_PROB', 0.99),
     ],
 
     'vapi' => [

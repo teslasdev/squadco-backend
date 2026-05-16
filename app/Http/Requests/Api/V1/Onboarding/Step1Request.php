@@ -60,6 +60,7 @@ class Step1Request extends FormRequest
             'state_of_posting' => 'nullable|string',
             'lga'              => 'nullable|string',
             'office_address'   => 'nullable|string',
+            'salary_amount'    => 'nullable|numeric|min:1',
         ];
     }
 

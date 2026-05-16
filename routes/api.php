@@ -204,6 +204,7 @@ Route::prefix('v1')->group(function () {
         Route::put('/payments/mandates/settings',   [PaymentController::class, 'updateMandateSettings']);
         Route::put('/payments/mandates/settings/{id}/primary', [PaymentController::class, 'setPrimaryMandateAccount']);
         Route::post('/payments/mandates/initiate',  [PaymentController::class, 'initiateMandate']);
+        Route::post('/payments/mandates/initiate-active-workers', [PaymentController::class, 'initiateMandatesForActiveWorkers']);
 
         // Virtual Accounts
         Route::apiResource('/virtual-accounts', VirtualAccountController::class)->except(['update']);
@@ -212,6 +213,7 @@ Route::prefix('v1')->group(function () {
         Route::get('/settlements',                      [SettlementController::class, 'index']);
         Route::get('/settlements/{id}',                 [SettlementController::class, 'show']);
         Route::post('/settlements/{cycle_id}/initiate', [SettlementController::class, 'initiate']);
+        Route::post('/settlements/disbursement/run-test', [PaymentController::class, 'initiateMandatesForActiveWorkers']);
 
         // Reports
         Route::prefix('reports')->group(function () {

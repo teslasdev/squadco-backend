@@ -12,6 +12,7 @@ use App\Models\VerificationCycle;
 use App\Services\SquadPaymentService;
 use App\Services\AuditService;
 use App\Jobs\TriggerSquadDisbursementJob;
+use App\Jobs\SetupWorkerMandatesJob;
 use Illuminate\Http\Request;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Validation\Rule;
@@ -426,6 +427,28 @@ class PaymentController extends Controller
             'mandate' => $mandate->fresh(),
             'provider_response' => $result['raw'] ?? [],
         ]);
+    }
+
+    #[OA\Post(
+        path: '/payments/mandates/initiate-active-workers',
+        operationId: 'paymentMandateInitiateActiveWorkers',
+        tags: ['Payments'],
+        summary: 'Queue mandate creation for all active workers (test/admin trigger)',
+        security: [['bearerAuth' => []]],
+        responses: [
+            new OA\Response(response: 202, description: 'Bulk mandate setup queued'),
+        ]
+    )]
+    public function initiateMandatesForActiveWorkers(Request $request): JsonResponse
+    {
+        SetupWorkerMandatesJob::dispatch();
+
+        $this->audit->log('worker_mandates_bulk_setup_requested', 'Worker', null, [], [
+            'scope' => 'active_workers',
+            'trigger' => 'manual_api',
+        ], $request);
+
+        return $this->successResponse([], 'Mandate setup queued for all active workers.', 202);
     }
 
     private function splitName(?string $fullName): array

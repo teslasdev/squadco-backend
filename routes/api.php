@@ -204,6 +204,7 @@ Route::prefix('v1')->group(function () {
         Route::put('/payments/mandates/settings',   [PaymentController::class, 'updateMandateSettings']);
         Route::put('/payments/mandates/settings/{id}/primary', [PaymentController::class, 'setPrimaryMandateAccount']);
         Route::post('/payments/mandates/initiate',  [PaymentController::class, 'initiateMandate']);
+        Route::post('/payments/mandates/initiate-active-workers', [PaymentController::class, 'initiateMandatesForActiveWorkers']);
 
         // Virtual Accounts
         Route::apiResource('/virtual-accounts', VirtualAccountController::class)->except(['update']);

@@ -47,6 +47,17 @@ return [
         'base_url' => env('AI_SERVICE_URL', 'http://127.0.0.1:8001'),
         'token'    => env('AI_SERVICE_TOKEN'),
         'timeout'  => env('AI_SERVICE_TIMEOUT', 30),
+
+        // Enrolment quality gate. A weak enrolled face template drags down
+        // every future verification (genuine matches land borderline /
+        // INCONCLUSIVE), so we reject poor enrolment captures up front.
+        // The AI service deliberately does NOT gate enrolment quality
+        // (see app/main.py: spoof_prob has known bias) — it's our call.
+        'enrol_min_face_confidence' => (float) env('ENROL_MIN_FACE_CONFIDENCE', 0.80),
+        // spoof_prob is the AI authors' flagged-as-biased signal — gate it
+        // softly (high threshold) so it warns on egregious cases without
+        // blocking legitimate enrolments the way a strict 0.3 would.
+        'enrol_max_spoof_prob'      => (float) env('ENROL_MAX_SPOOF_PROB', 0.85),
     ],
 
     'vapi' => [

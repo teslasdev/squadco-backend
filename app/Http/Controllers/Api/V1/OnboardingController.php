@@ -302,6 +302,54 @@ class OnboardingController extends Controller
             return $this->errorResponse('AI service returned an unexpected response.', 503, ['ai_response' => $embedResult['data']]);
         }
 
+        // ── Enrolment quality gate ──────────────────────────────────────────
+        // Mirrors SelfEnrolController::step4. A poor enrolment template is the
+        // root cause of genuine matches later scoring borderline/INCONCLUSIVE,
+        // so reject low-quality captures before they become permanent.
+        $quality   = data_get($embedResult, 'data.quality', []);
+        $spoofProb = (float) data_get($embedResult, 'data.spoof_prob', 0.0);
+        $reasons   = [];
+
+        if (data_get($quality, 'face_detected') === false) {
+            $reasons[] = 'no clear face detected';
+        }
+        if (data_get($quality, 'blur_ok') === false) {
+            $reasons[] = 'image is too blurry';
+        }
+        if (data_get($quality, 'brightness_ok') === false) {
+            $reasons[] = 'lighting is too dark';
+        }
+        $conf    = data_get($quality, 'confidence');
+        $minConf = (float) config('services.ai_verification.enrol_min_face_confidence', 0.80);
+        if ($conf !== null && (float) $conf < $minConf) {
+            $reasons[] = 'face not clearly visible (low detector confidence)';
+        }
+        $maxSpoof = (float) config('services.ai_verification.enrol_max_spoof_prob', 0.85);
+        if ($spoofProb > $maxSpoof) {
+            $reasons[] = 'capture failed the liveness/spoof check';
+        }
+
+        if (!empty($reasons)) {
+            $cleanup();
+            $this->audit->log('onboarding_step4_quality_rejected', 'Worker', $worker_id, [], [
+                'reasons'    => $reasons,
+                'confidence' => $conf,
+                'spoof_prob' => $spoofProb,
+                'quality'    => $quality,
+            ], $request);
+
+            return $this->errorResponse(
+                'Face capture quality too low for enrolment — please retake in good, even lighting, '
+                . 'facing the camera directly, with a sharp (non-blurry) image.',
+                422,
+                [
+                    'reasons'    => $reasons,
+                    'quality'    => $quality,
+                    'spoof_prob' => $spoofProb,
+                ]
+            );
+        }
+
         // 2. Right-turn liveness
         $rightResult = $this->ai->verifyFacePose($straightAbs, $rightAbs, 'right');
         if (!$rightResult['success']) {

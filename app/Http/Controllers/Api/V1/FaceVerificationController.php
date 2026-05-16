@@ -148,13 +148,20 @@ class FaceVerificationController extends Controller
         $identityVerdict = $data['verdict'] ?? 'INCONCLUSIVE';
         $identityScore   = (int) ($data['score'] ?? 0);
         $spoofProb       = (float) ($data['spoof_prob'] ?? 0);
+        // Raw ArcFace cosine the verdict was derived from. Persisting this is
+        // the only way to diagnose/tune why a genuine match scored borderline
+        // (INCONCLUSIVE) instead of guessing from the bucketed sentinel.
+        $identitySimilarity = isset($data['similarity']) ? (float) $data['similarity'] : null;
+        $identityLayerScore = data_get($data, 'layers.identity');
 
         $session->update([
-            'frame1_url'         => $url,
-            'identity_score'     => $identityScore,
-            'identity_verdict'   => $identityVerdict,
+            'frame1_url'          => $url,
+            'identity_score'      => $identityScore,
+            'identity_similarity' => $identitySimilarity,
+            'identity_layer_score' => $identityLayerScore !== null ? (int) $identityLayerScore : null,
+            'identity_verdict'    => $identityVerdict,
             'identity_spoof_prob' => $spoofProb,
-            'latency_ms'         => $latency,
+            'latency_ms'          => $latency,
         ]);
 
         // FAIL on frame1 = different person. End session immediately, write Verification row.
@@ -186,7 +193,9 @@ class FaceVerificationController extends Controller
         $session->update(['status' => 'pose_right_pending']);
 
         $this->audit->log('face_verify_identity_passed', 'FaceVerificationSession', $session->id, [], [
-            'verdict' => $identityVerdict, 'score' => $identityScore,
+            'verdict'    => $identityVerdict,
+            'score'      => $identityScore,
+            'similarity' => $identitySimilarity,
         ], $request);
 
         return $this->successResponse([
@@ -195,8 +204,9 @@ class FaceVerificationController extends Controller
             'next_step'          => 'frame2',
             'expected_direction' => 'right',
             'identity'           => [
-                'verdict' => $identityVerdict,
-                'score'   => $identityScore,
+                'verdict'    => $identityVerdict,
+                'score'      => $identityScore,
+                'similarity' => $identitySimilarity,
             ],
         ], 'Identity check passed — capture frame 2 (turn head right).');
     }
